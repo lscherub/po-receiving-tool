@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PO & Receiving Automation Suite</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for professional icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- html2pdf.js for one-click PDF export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            800: '#166534',
+                            900: '#14532d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @media print {
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            body { background: white !important; color: black !important; }
+            .page-break { page-break-after: always; }
+        }
+        /* Custom scrollbar for data tables */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 h-full flex flex-col font-sans antialiased">
+
+    <header class="bg-slate-900 text-white shadow-md no-print">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col sm:flex-row justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <div class="bg-emerald-600 p-2 rounded-lg text-white shadow-inner">
+                    <i class="fa-solid fa-boxes-stacked text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg tracking-tight">PO & Receiving Suite</h1>
+                    <p class="text-xs text-slate-400">Genesis Nutrition • Davie | Main | West</p>
+                </div>
+            </div>
+            <div class="mt-3 sm:mt-0 flex items-center space-x-3">
+                <button onclick="loadSampleData()" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-600/50 text-xs px-3 py-1.5 rounded-md font-medium transition flex items-center space-x-1.5">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    <span>Load Sample POS Data</span>
+                </button>
+                <button onclick="resetAllData()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-3 py-1.5 rounded-md font-medium transition flex items-center space-x-1.5">
+                    <i class="fa-solid fa-rotate-right"></i>
+                    <span>Reset</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 overflow-y-auto">
+
+        <!-- Notification Banner / Toast -->
+        <div id="toast" class="hidden mb-4 p-4 rounded-lg text-sm font-medium transition-all duration-300 shadow-sm flex items-center justify-between">
+            <span id="toast-message"></span>
+            <button onclick="hideToast()" class="text-current opacity-70 hover:opacity-100"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <!-- Wizard Steps Indicator -->
+        <div class="mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-200 no-print">
+            <div class="flex items-center justify-between max-w-2xl mx-auto text-xs sm:text-sm font-medium">
+                <div id="step-indicator-1" class="flex items-center space-x-2 text-emerald-600 font-semibold">
+                    <div class="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">1</div>
+                    <span>Import & PO Details</span>
+                </div>
+                <div class="w-12 sm:w-24 h-0.5 bg-slate-200"></div>
+                <div id="step-indicator-2" class="flex items-center space-x-2 text-slate-400">
+                    <div class="w-7 h-7 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center font-bold">2</div>
+                    <span>Preview & Clean</span>
+                </div>
+                <div class="w-12 sm:w-24 h-0.5 bg-slate-200"></div>
+                <div id="step-indicator-3" class="flex items-center space-x-2 text-slate-400">
+                    <div class="w-7 h-7 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center font-bold">3</div>
+                    <span>Store Sheets & Print</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= STEP 1: IMPORT & DETAILS ================= -->
+        <div id="wizard-step-1" class="space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- PO Meta Details -->
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-4 lg:col-span-1">
+                    <h2 class="font-bold text-slate-800 text-base flex items-center space-x-2 border-b pb-3">
+                        <i class="fa-solid fa-file-invoice text-emerald-600"></i>
+                        <span>PO Meta Information</span>
+                    </h2>
+                    
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">PO Number *</label>
+                        <input type="text" id="po-number" placeholder="e.g. 8695" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value="">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Vendor Name *</label>
+                        <input type="text" id="po-vendor" placeholder="e.g. MORPH or CANPREV" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value="">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Order Date *</label>
+                        <input type="date" id="po-date" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" value="">
+                    </div>
+
+                    <div class="pt-2">
+                        <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2">Target Stores</label>
+                        <div class="space-y-2">
+                            <label class="flex items-center space-x-2 text-sm">
+                                <input type="checkbox" id="store-davie" checked class="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4">
+                                <span class="font-medium text-slate-700">DAVIE</span>
+                            </label>
+                            <label class="flex items-center space-x-2 text-sm">
+                                <input type="checkbox" id="store-main" checked class="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4">
+                                <span class="font-medium text-slate-700">MAIN</span>
+                            </label>
+                            <label class="flex items-center space-x-2 text-sm">
+                                <input type="checkbox" id="store-west" checked class="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4">
+                                <span class="font-medium text-slate-700">WEST</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Raw Data Input Area -->
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-4 lg:col-span-2 flex flex-col">
+                    <div class="flex justify-between items-center border-b pb-3">
+                        <h2 class="font-bold text-slate-800 text-base flex items-center space-x-2">
+                            <i class="fa-solid fa-table text-emerald-600"></i>
+                            <span>Paste Raw POS Data (Tab-Separated or CSV)</span>
+                        </h2>
+                        <span class="text-xs text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">Expected columns: Store, Sku, Description, Order Qty, Reg. Sell Price, etc.</span>
+                    </div>
+
+                    <div class="flex-1 flex flex-col">
+                        <textarea id="raw-data-input" rows="10" placeholder="Paste copied rows directly from your POS export spreadsheet here (includes headers or just data rows)..." class="w-full flex-1 p-3 font-mono text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50/50"></textarea>
+                    </div>
+
+                    <div class="flex justify-between items-center pt-2">
+                        <div class="text-xs text-slate-500 flex items-center space-x-1">
+                            <i class="fa-solid fa-circle-info text-blue-500"></i>
+                            <span>Tip: You can copy directly from Excel/Google Sheets and paste here.</span>
+                        </div>
+                        <button onclick="processRawData()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-lg font-medium text-sm shadow-sm transition flex items-center space-x-2">
+                            <span>Process & Clean Data</span>
+                            <i class="fa-solid fa-arrow-right"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= STEP 2: PREVIEW & CLEANED DATA ================= -->
+        <div id="wizard-step-2" class="space-y-6 hidden">
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-4">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b pb-4">
+                    <div>
+                        <h2 class="font-bold text-slate-800 text-base flex items-center space-x-2">
+                            <i class="fa-solid fa-filter text-emerald-600"></i>
+                            <span>Step 2: Cleaned Raw Data Preview</span>
+                        </h2>
+                        <p class="text-xs text-slate-500 mt-0.5">Unnecessary POS columns removed. Keeping Store, SKU, Description, Product Number, Order Qty, and Reg. Sell Price.</p>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <button onclick="goToStep(1)" class="border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition">
+                            <i class="fa-solid fa-arrow-left mr-1.5"></i> Back to Raw Input
+                        </button>
+                        <button onclick="generateStoreSheets()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg text-sm font-medium shadow-sm transition flex items-center space-x-2">
+                            <span>Generate Store Receiving Sheets</span>
+                            <i class="fa-solid fa-arrow-right"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stats summary badges -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                        <div class="text-xs text-slate-500 font-medium">Total Line Items</div>
+                        <div id="stat-total-items" class="text-lg font-bold text-slate-800">0</div>
+                    </div>
+                    <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                        <div class="text-xs text-slate-500 font-medium">Stores Detected</div>
+                        <div id="stat-total-stores" class="text-lg font-bold text-slate-800">0</div>
+                    </div>
+                    <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                        <div class="text-xs text-slate-500 font-medium">Total Units Ordered</div>
+                        <div id="stat-total-units" class="text-lg font-bold text-slate-800">0</div>
+                    </div>
+                    <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                        <div class="text-xs text-slate-500 font-medium">Active PO Number</div>
+                        <div id="stat-po-num" class="text-lg font-bold text-emerald-600">-</div>
+                    </div>
+                </div>
+
+                <!-- Cleaned Data Table Preview -->
+                <div class="border border-slate-200 rounded-lg overflow-hidden">
+                    <div class="overflow-x-auto max-h-96">
+                        <table id="cleaned-preview-table" class="w-full text-left border-collapse text-xs">
+                            <thead class="bg-slate-100 text-slate-700 uppercase font-semibold sticky top-0 z-10 border-b border-slate-200">
+                                <tr>
+                                    <th class="p-3">Store</th>
+                                    <th class="p-3">SKU</th>
+                                    <th class="p-3">Description</th>
+                                    <th class="p-3">Product Number</th>
+                                    <th class="p-3 text-center">Order Qty</th>
+                                    <th class="p-3 text-right">Reg. Sell Price</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cleaned-preview-tbody" class="divide-y divide-slate-100 bg-white">
+                                <!-- Dynamically populated -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= STEP 3: STORE SHEETS VIEW & EXPORT ================= -->
+        <div id="wizard-step-3" class="space-y-6 hidden">
+            <!-- Action Bar -->
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4 no-print">
+                <div class="flex items-center space-x-3">
+                    <button onclick="goToStep(2)" class="border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition">
+                        <i class="fa-solid fa-arrow-left mr-1.5"></i> Back to Preview
+                    </button>
+                    <span class="text-sm font-semibold text-slate-700">Ready for Store Receiving Staff</span>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <div class="flex items-center space-x-2">
+                        <select id="pdf-store-select" title="Choose which store to export/print" class="border border-slate-300 rounded-lg text-sm px-2 py-2 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500">
+                            <option value="ALL">All Stores</option>
+                            <option value="DAVIE">Davie</option>
+                            <option value="MAIN">Main</option>
+                            <option value="WEST">West</option>
+                        </select>
+                        <button onclick="printCleanSheets()" class="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2 shadow-sm">
+                            <i class="fa-solid fa-print"></i>
+                            <span>Print Selected Sheet(s)</span>
+                        </button>
+                    </div>
+                    <button onclick="copyAllSheetsText()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2 shadow-sm">
+                        <i class="fa-solid fa-copy"></i>
+                        <span>Copy Formatted Text</span>
+                    </button>
+                    <button onclick="exportCSV()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2 shadow-sm">
+                        <i class="fa-solid fa-file-excel"></i>
+                        <span>Export CSV / Excel</span>
+                    </button>
+                    <button onclick="exportPDF()" class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2 shadow-sm">
+                        <i class="fa-solid fa-file-pdf"></i>
+                        <span>Export as PDF</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Store Tabs selector -->
+            <div class="flex space-x-2 border-b border-slate-200 no-print" id="store-tabs-container">
+                <!-- Dynamically populated store tabs -->
+            </div>
+
+            <!-- Store Sheets Container -->
+            <div id="store-sheets-container" class="space-y-8">
+                <!-- Dynamically generated store sheet cards -->
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        // Application State
+        document.getElementById('po-date').value = new Date().toLocaleDateString('en-CA');
+
+        let state = {
+            poNumber: "8695",
+            vendor: "MORPH",
+            date: "18-Jun",
+            stores: { davie: true, main: true, west: true },
+            rawText: "",
+            parsedRows: [],
+            cleanedRows: [],
+            activeTab: null
+        };
+
+        // Sample data for quick testing
+        const sampleRawData = `Store\tSku\tDim.1\tDim.2\tDim.3\tDim.4\tDescription\tBrand\tProduct Number\tList Cost\tAlt.Vendor Cost\tItem Discount\tItem Extra Costs\tUnit Cost\tOrder Qty\tQOH\tTotal\tCustomer\tReason\tLookups\tReg. Sell Price\tItem Note\tExtra Message\tOrder Pkg\tMargin\tDisplayGroup\tPrimary Vendor\tAlternate Vendors\tAlt. Product#\tQTYAVL\tSugg.Min\tSugg.Max\tReOrder Point\tQOO\tCurrent PO QOO\tWebItem\tUnit Weight\tExt. Weight\tSize Desc\tPRICE PER UNIT\tSUG RETAIL\tDisclaimer\t99 Price
+DAVIE\t99031254570\t\t\t\t\tMORPH PROTEIN PUCK PB MILK CHOC SNGL ::38G\tMORPH\t\t$2.50\t$2.50\t0%\t0%\t$2.50\t12\t0\t$30.00\t\t\t\t$3.79\t\t\t12\t34.00\t\tMORPH\t\t\t\t0\t0\t0\t12\t12\t\t0\t0\t38G\t\t\t\tY
+DAVIE\t99031254580\t\t\t\t\tMORPH PROTEIN PUCK BERRY BLAST DRK CHOC SNGL ::38G\tMORPH\t\t$2.50\t$2.50\t0%\t0%\t$2.50\t12\t0\t$30.00\t\t\t\t$3.79\t\t\t12\t34.00\t\tMORPH\t\t\t\t0\t0\t0\t12\t12\t\t0\t0\t38G\t\t\t\tY
+DAVIE\t99031254590\t\t\t\t\tMORPH PROTEIN PUCK STRW MATCHA LATTE SNGL ::38G\tMORPH\t\t$2.50\t$2.50\t0%\t0%\t$2.50\t12\t0\t$30.00\t\t\t\t$3.79\t\t\t12\t34.00\t\tMORPH\t\t\t\t0\t0\t0\t12\t12\t\t0\t0\t38G\t\t\t\tY
+MAIN\t99031254570\t\t\t\t\tMORPH PROTEIN PUCK PB MILK CHOC SNGL ::38G\tMORPH\t\t$2.50\t$2.50\t0%\t0%\t$2.50\t12\t0\t$30.00\t\t\t\t$3.79\t\t\t12\t34.00\t\tMORPH\t\t\t\t0\t0\t0\t12\t12\t\t0\t0\t38G\t\t\t\tY
+MAIN\t99031254580\t\t\t\t\tMORPH PROTEIN PUCK BERRY BLAST DRK CHOC SNGL ::38G\tMORPH\t\t$2.50\t$2.50\t0%\t0%\t$2.50\t12\t0\t$30.00\t\t\t\t$3.79\t\t\t12\t34.00\t\tMORPH\t\t\t\t0\t0\t0\t12\t12\t\t0\t0\t38G\t\t\t\tY
+MAIN\t99031254590\t\t\t\t\tMORPH PROTEIN PUCK STRW MATCHA LATTE SNGL ::38G\tMORPH\t\t$2.50\t$2.50\t0%\t0%\t$2.50\t12\t0\t$30.00\t\t\t\t$3.79\t\t\t12\t34.00\t\tMORPH\t\t\t\t0\t0\t0\t12\t12\t\t0\t0\t38G\t\t\t\tY
+WEST\t99031254570\t\t\t\t\tMORPH PROTEIN PUCK PB MILK CHOC SNGL ::38G\tMORPH\t\t$2.50\t$2.50\t0%\t0%\t$2.50\t12\t0\t$30.00\t\t\t\t$3.79\t\t\t12\t34.00\t\tMORPH\t\t\t\t0\t0\t0\t12\t12\t\t0\t0\t38G\t\t\t\tY
+WEST\t99031254580\t\t\t\t\tMORPH PROTEIN PUCK BERRY BLAST DRK CHOC SNGL ::38G\tMORPH\t\t$2.50\t$2.50\t0%\t0%\t$2.50\t12\t0\t$30.00\t\t\t\t$3.79\t\t\t12\t34.00\t\tMORPH\t\t\t\t0\t0\t0\t12\t12\t\t0\t0\t38G\t\t\t\tY
+WEST\t99031254590\t\t\t\t\tMORPH PROTEIN PUCK STRW MATCHA LATTE SNGL ::38G\tMORPH\t\t$2.50\t$2.50\t0%\t0%\t$2.50\t12\t0\t$30.00\t\t\t\t$3.79\t\t\t12\t34.00\t\tMORPH\t\t\t\t0\t0\t0\t12\t12\t\t0\t0\t38G\t\t\t\tY`;
+
+        function loadSampleData() {
+            document.getElementById('po-number').value = "8695";
+            document.getElementById('po-vendor').value = "MORPH";
+            document.getElementById('po-date').value = "2026-06-18";
+            document.getElementById('raw-data-input').value = sampleRawData;
+            showToast("Sample POS data loaded successfully!", "success");
+        }
+
+        function resetAllData() {
+            document.getElementById('raw-data-input').value = "";
+            document.getElementById('po-number').value = "8695";
+            document.getElementById('po-vendor').value = "MORPH";
+            document.getElementById('po-date').value = "2026-06-18";
+            goToStep(1);
+            showToast("Reset successfully.", "info");
+        }
+
+        // Converts a yyyy-mm-dd date input value into the compact "18-Jun" display format.
+        function formatDateForDisplay(dateStr) {
+            if (!dateStr) return "";
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            const parts = dateStr.split("-");
+            const monthIdx = parseInt(parts[1], 10) - 1;
+            const day = parseInt(parts[2], 10);
+            if (isNaN(monthIdx) || isNaN(day) || monthIdx < 0 || monthIdx > 11) return dateStr;
+            return `${day}-${months[monthIdx]}`;
+        }
+
+        function showToast(message, type = "success") {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-message');
+            toastMsg.textContent = message;
+            toast.className = "mb-4 p-4 rounded-lg text-sm font-medium transition-all duration-300 shadow-sm flex items-center justify-between ";
+            if (type === "success") {
+                toast.classList.add("bg-emerald-50", "text-emerald-800", "border", "border-emerald-200");
+            } else if (type === "error") {
+                toast.classList.add("bg-rose-50", "text-rose-800", "border", "border-rose-200");
+            } else {
+                toast.classList.add("bg-blue-50", "text-blue-800", "border", "border-blue-200");
+            }
+            toast.classList.remove("hidden");
+            setTimeout(() => { toast.classList.add("hidden"); }, 4000);
+        }
+
+        function hideToast() {
+            document.getElementById('toast').classList.add("hidden");
+        }
+
+        function goToStep(step) {
+            document.getElementById('wizard-step-1').classList.add('hidden');
+            document.getElementById('wizard-step-2').classList.add('hidden');
+            document.getElementById('wizard-step-3').classList.add('hidden');
+
+            document.getElementById(`wizard-step-${step}`).classList.remove('hidden');
+
+            // Update header wizard indicators
+            for (let i = 1; i <= 3; i++) {
+                const ind = document.getElementById(`step-indicator-${i}`);
+                const circle = ind.querySelector('div');
+                if (i === step) {
+                    ind.className = "flex items-center space-x-2 text-emerald-600 font-semibold";
+                    circle.className = "w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold";
+                } else if (i < step) {
+                    ind.className = "flex items-center space-x-2 text-slate-700 font-medium";
+                    circle.className = "w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold";
+                } else {
+                    ind.className = "flex items-center space-x-2 text-slate-400";
+                    circle.className = "w-7 h-7 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center font-bold";
+                }
+            }
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function processRawData() {
+            const rawText = document.getElementById('raw-data-input').value.trim();
+            if (!rawText) {
+                showToast("Please paste raw POS data before proceeding.", "error");
+                return;
+            }
+
+            state.poNumber = document.getElementById('po-number').value.trim() || "8695";
+            state.vendor = document.getElementById('po-vendor').value.trim() || "VENDOR";
+            state.date = formatDateForDisplay(document.getElementById('po-date').value.trim()) || "18-Jun";
+            state.stores.davie = document.getElementById('store-davie').checked;
+            state.stores.main = document.getElementById('store-main').checked;
+            state.stores.west = document.getElementById('store-west').checked;
+
+            const lines = rawText.split('\n');
+            if (lines.length < 2) {
+                showToast("Insufficient data rows found. Please check your paste format.", "error");
+                return;
+            }
+
+            // Detect delimiter (Tab or Comma)
+            const firstLine = lines[0];
+            const delimiter = firstLine.includes('\t') ? '\t' : (firstLine.includes(',') ? ',' : '\t');
+            const headers = firstLine.split(delimiter).map(h => h.trim().replace(/^["']|["']$/g, ''));
+
+            // Map header indices
+            const colMap = {};
+            headers.forEach((h, idx) => {
+                const lower = h.toLowerCase();
+                if (lower.includes('store')) colMap.store = idx;
+                else if (lower === 'sku' || lower.includes('sku')) colMap.sku = idx;
+                else if (lower.includes('description')) colMap.description = idx;
+                else if (lower.includes('product number') || lower === 'product #') colMap.productNumber = idx;
+                else if (lower.includes('order qty') || lower === 'qty' || lower === 'order quantity') colMap.orderQty = idx;
+                else if (lower.includes('reg. sell price') || lower.includes('sell price') || lower.includes('retail')) colMap.regSellPrice = idx;
+            });
+
+            // Fallback default index guesses if headers are unconventional or missing
+            const parsedRows = [];
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue;
+                const cols = line.split(delimiter).map(c => c.trim().replace(/^["']|["']$/g, ''));
+                if (cols.length < 3) continue;
+
+                const storeVal = (colMap.store !== undefined && cols[colMap.store]) ? cols[colMap.store].toUpperCase() : (cols[0]?.toUpperCase() || "DAVIE");
+                const skuVal = (colMap.sku !== undefined && cols[colMap.sku]) ? cols[colMap.sku] : (cols[1] || "");
+                const descVal = (colMap.description !== undefined && cols[colMap.description]) ? cols[colMap.description] : (cols[6] || cols[2] || "");
+                const prodNumVal = (colMap.productNumber !== undefined && cols[colMap.productNumber]) ? cols[colMap.productNumber] : "";
+                const orderQtyVal = (colMap.orderQty !== undefined && cols[colMap.orderQty]) ? cols[colMap.orderQty] : (cols[14] || "1");
+                let priceVal = (colMap.regSellPrice !== undefined && cols[colMap.regSellPrice]) ? cols[colMap.regSellPrice] : (cols[20] || "$0.00");
+                if (priceVal && !priceVal.startsWith('$')) priceVal = '$' + priceVal;
+
+                parsedRows.push({
+                    store: storeVal,
+                    sku: skuVal,
+                    description: descVal,
+                    productNumber: prodNumVal,
+                    orderQty: orderQtyVal,
+                    regSellPrice: priceVal
+                });
+            }
+
+            if (parsedRows.length === 0) {
+                showToast("Could not parse valid data rows. Please ensure columns match POS export format.", "error");
+                return;
+            }
+
+            state.cleanedRows = parsedRows;
+            renderCleanedPreview();
+            goToStep(2);
+            showToast(`Successfully cleaned ${parsedRows.length} item rows!`, "success");
+        }
+
+        function renderCleanedPreview() {
+            const tbody = document.getElementById('cleaned-preview-tbody');
+            tbody.innerHTML = "";
+
+            let totalUnits = 0;
+            const storeSet = new Set();
+
+            state.cleanedRows.forEach(row => {
+                storeSet.add(row.store);
+                totalUnits += parseInt(row.orderQty) || 0;
+
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50 transition border-b border-slate-100";
+                tr.innerHTML = `
+                    <td class="p-3 font-semibold text-slate-700">${escapeHtml(row.store)}</td>
+                    <td class="p-3 font-mono text-slate-600">${escapeHtml(row.sku)}</td>
+                    <td class="p-3 font-medium text-slate-900">${escapeHtml(row.description)}</td>
+                    <td class="p-3 font-mono text-slate-500">${escapeHtml(row.productNumber || '')}</td>
+                    <td class="p-3 text-center font-bold text-emerald-700 bg-emerald-50/50">${escapeHtml(row.orderQty)}</td>
+                    <td class="p-3 text-right font-semibold text-slate-700">${escapeHtml(row.regSellPrice)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('stat-total-items').textContent = state.cleanedRows.length;
+            document.getElementById('stat-total-stores').textContent = storeSet.size;
+            document.getElementById('stat-total-units').textContent = totalUnits;
+            document.getElementById('stat-po-num').textContent = state.poNumber;
+        }
+
+        function generateStoreSheets() {
+            const activeStores = [];
+            if (document.getElementById('store-davie').checked) activeStores.push("DAVIE");
+            if (document.getElementById('store-main').checked) activeStores.push("MAIN");
+            if (document.getElementById('store-west').checked) activeStores.push("WEST");
+
+            if (activeStores.length === 0) {
+                showToast("Please select at least one target store.", "error");
+                return;
+            }
+
+            const tabsContainer = document.getElementById('store-tabs-container');
+            const sheetsContainer = document.getElementById('store-sheets-container');
+            tabsContainer.innerHTML = "";
+            sheetsContainer.innerHTML = "";
+
+            state.activeTab = activeStores[0];
+
+            activeStores.forEach((storeName, idx) => {
+                // Create Tab button
+                const btn = document.createElement('button');
+                btn.id = `tab-btn-${storeName}`;
+                btn.className = `px-5 py-2.5 text-sm font-semibold border-b-2 transition flex items-center space-x-2 ${storeName === state.activeTab ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50 rounded-t-lg' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`;
+                btn.innerHTML = `<i class="fa-solid fa-store text-xs"></i><span>Store: ${storeName}</span>`;
+                btn.onclick = () => switchStoreTab(storeName);
+                tabsContainer.appendChild(btn);
+
+                // Filter rows for this store
+                const storeRows = state.cleanedRows.filter(r => r.store.toUpperCase() === storeName);
+
+                // Create Store Sheet Card (Matches exact requested template format)
+                const sheetDiv = document.createElement('div');
+                sheetDiv.id = `store-sheet-${storeName}`;
+                sheetDiv.className = `bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4 print-sheet ${storeName === state.activeTab ? '' : 'hidden'}`;
+
+                let rowsHtml = '';
+                if (storeRows.length === 0) {
+                    rowsHtml = `<tr><td colspan="7" class="p-6 text-center text-slate-400 italic">No items found for ${storeName} in this PO export.</td></tr>`;
+                } else {
+                    storeRows.forEach(r => {
+                        rowsHtml += `
+                            <tr class="border-b border-slate-200 hover:bg-slate-50/50">
+                                <td class="p-2.5 font-semibold text-slate-800">${escapeHtml(r.store)}</td>
+                                <td class="p-2.5 font-mono text-slate-600">${escapeHtml(r.sku)}</td>
+                                <td class="p-2.5 font-medium text-slate-900">${escapeHtml(r.description)}</td>
+                                <td class="p-2.5 font-mono text-slate-500">${escapeHtml(r.productNumber || '')}</td>
+                                <td class="p-2.5 text-center font-bold text-slate-800 bg-slate-50">${escapeHtml(r.orderQty)}</td>
+                                <td class="p-2.5 text-right font-medium text-slate-700">${escapeHtml(r.regSellPrice)}</td>
+                                <td class="p-2.5 text-center font-mono text-slate-400 bg-slate-50/50 border-l border-dashed border-slate-300 w-24">____</td>
+                            </tr>
+                        `;
+                    });
+                }
+
+                sheetDiv.innerHTML = `
+                    <div class="border-2 border-slate-800 rounded-lg overflow-hidden bg-white">
+                        <!-- Header Block -->
+                        <div class="bg-slate-900 text-white p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                            <div class="flex items-center space-x-3">
+                                <span class="bg-emerald-600 text-white font-bold px-3 py-1 rounded text-xs uppercase tracking-wider">PO # ${escapeHtml(state.poNumber)}</span>
+                                <span class="font-bold text-lg tracking-wide text-emerald-300">${escapeHtml(state.vendor)}</span>
+                            </div>
+                            <div class="text-sm font-semibold text-slate-300 flex items-center space-x-2">
+                                <i class="fa-regular fa-calendar"></i>
+                                <span>${escapeHtml(state.date)}</span>
+                            </div>
+                        </div>
+
+                        <!-- Table Header & Items -->
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse text-xs">
+                                <thead class="bg-slate-100 text-slate-800 uppercase font-bold border-b border-slate-300">
+                                    <tr>
+                                        <th class="p-2.5">Store</th>
+                                        <th class="p-2.5">Sku</th>
+                                        <th class="p-2.5">Description</th>
+                                        <th class="p-2.5">Product Number</th>
+                                        <th class="p-2.5 text-center">Order Qty</th>
+                                        <th class="p-2.5 text-right">Reg. Sell Price</th>
+                                        <th class="p-2.5 text-center bg-slate-200 text-slate-900 border-l border-slate-300">QTY (Count)</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-200">
+                                    ${rowsHtml}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Footer / Sign-off Block -->
+                        <div class="p-4 bg-slate-50 border-t border-slate-300 space-y-4 text-xs">
+                            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                <div class="font-semibold text-slate-700 flex items-center space-x-2">
+                                    <span>CLERK:</span>
+                                    <div class="border-b-2 border-slate-400 w-48 inline-block h-4"></div>
+                                </div>
+                                <div class="text-slate-500 font-mono text-[11px]">
+                                    Verified By Receiver: ___________________ Date: _________
+                                </div>
+                            </div>
+                            <div class="text-center font-bold text-rose-700 bg-rose-50 p-2.5 rounded border border-rose-200 tracking-wide uppercase">
+                                *** PLEASE CHECK ALL EXPIRY DATES *** / CHECK ALL CUSTOMER REQUESTS
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                sheetsContainer.appendChild(sheetDiv);
+            });
+
+            goToStep(3);
+            showToast("Store receiving sheets generated successfully!", "success");
+        }
+
+        function switchStoreTab(storeName) {
+            state.activeTab = storeName;
+            // Update tabs UI
+            document.querySelectorAll('[id^="tab-btn-"]').forEach(btn => {
+                if (btn.id === `tab-btn-${storeName}`) {
+                    btn.className = "px-5 py-2.5 text-sm font-semibold border-b-2 transition flex items-center space-x-2 border-emerald-600 text-emerald-700 bg-emerald-50/50 rounded-t-lg";
+                } else {
+                    btn.className = "px-5 py-2.5 text-sm font-semibold border-b-2 transition flex items-center space-x-2 border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50";
+                }
+            });
+            // Update sheets visibility
+            document.querySelectorAll('[id^="store-sheet-"]').forEach(div => {
+                if (div.id === `store-sheet-${storeName}`) {
+                    div.classList.remove('hidden');
+                } else {
+                    div.classList.add('hidden');
+                }
+            });
+        }
+
+        function copyAllSheetsText() {
+            let textOutput = "";
+            const activeStores = ["DAVIE", "MAIN", "WEST"].filter(s => {
+                const el = document.getElementById(`store-sheet-${s}`);
+                return el !== null;
+            });
+
+            activeStores.forEach(storeName => {
+                textOutput += `========================================\n`;
+                textOutput += `PO # ${state.poNumber} | ${state.vendor} | ${state.date} | STORE: ${storeName}\n`;
+                textOutput += `========================================\n`;
+                textOutput += `Store\tSku\tDescription\tProduct Number\tOrder Qty\tReg. Sell Price\tQTY\n`;
+                
+                const storeRows = state.cleanedRows.filter(r => r.store.toUpperCase() === storeName);
+                storeRows.forEach(r => {
+                    textOutput += `${r.store}\t${r.sku}\t${r.description}\t${r.productNumber || ''}\t${r.orderQty}\t${r.regSellPrice}\t\n`;
+                });
+                textOutput += `\nCLERK: ___________________\n`;
+                textOutput += `*** PLEASE CHECK ALL EXPIRY DATES *** / CHECK ALL CUSTOMER REQUESTS\n\n\n`;
+            });
+
+            const textarea = document.createElement('textarea');
+            textarea.value = textOutput;
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                showToast("All formatted store sheets copied to clipboard!", "success");
+            } catch (err) {
+                showToast("Failed to copy text.", "error");
+            }
+            document.body.removeChild(textarea);
+        }
+
+        function exportCSV() {
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "Store,Sku,Description,Product Number,Order Qty,Reg. Sell Price,QTY Count\r\n";
+
+            state.cleanedRows.forEach(r => {
+                const row = [
+                    `"${r.store}"`,
+                    `"${r.sku}"`,
+                    `"${r.description.replace(/"/g, '""')}"`,
+                    `"${r.productNumber || ''}"`,
+                    r.orderQty,
+                    `"${r.regSellPrice}"`,
+                    '""'
+                ];
+                csvContent += row.join(",") + "\r\n";
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `PO_${state.poNumber}_${state.vendor}_Receiving_Sheet.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast("CSV file exported successfully!", "success");
+        }
+
+        // Builds a clean, print-ready HTML document for one or more stores.
+        // Deliberately avoids the on-screen card styling (dark headers, thick
+        // borders, large padding) so the PDF is compact and easy to read.
+        function buildCleanPdfHtml(storeNames) {
+            const cellBase = 'border:1px solid #d0d0d0;padding:4px 6px;font-size:9.5px;line-height:1.3;vertical-align:top;';
+            const headCell = 'border:1px solid #999;padding:5px 6px;font-size:9.5px;font-weight:700;text-transform:uppercase;background:#e8e8e8;color:#111;text-align:left;';
+
+            let html = '';
+            storeNames.forEach((storeName, idx) => {
+                const storeRows = state.cleanedRows.filter(r => r.store.toUpperCase() === storeName);
+                const totalUnits = storeRows.reduce((sum, r) => sum + (parseInt(r.orderQty) || 0), 0);
+
+                let rowsHtml = '';
+                if (storeRows.length === 0) {
+                    rowsHtml = `<tr><td colspan="6" style="${cellBase}text-align:center;color:#888;font-style:italic;padding:12px;">No items found for ${escapeHtml(storeName)} in this PO export.</td></tr>`;
+                } else {
+                    storeRows.forEach((r, i) => {
+                        const bg = i % 2 === 0 ? '#ffffff' : '#f6f6f6';
+                        rowsHtml += `<tr style="background:${bg};page-break-inside:avoid;">
+                            <td style="${cellBase}font-family:monospace;white-space:nowrap;">${escapeHtml(r.sku)}</td>
+                            <td style="${cellBase}">${escapeHtml(r.description)}</td>
+                            <td style="${cellBase}font-family:monospace;">${escapeHtml(r.productNumber || '')}</td>
+                            <td style="${cellBase}text-align:center;font-weight:700;">${escapeHtml(r.orderQty)}</td>
+                            <td style="${cellBase}text-align:right;white-space:nowrap;">${escapeHtml(r.regSellPrice)}</td>
+                            <td style="${cellBase}text-align:center;">&nbsp;</td>
+                        </tr>`;
+                    });
+                }
+
+                html += `
+                <div style="font-family:Arial,Helvetica,sans-serif;color:#111;${idx > 0 ? 'page-break-before:always;' : ''}">
+                    <!-- Header -->
+                    <table style="width:100%;border-collapse:collapse;margin-bottom:8px;">
+                        <tr>
+                            <td style="vertical-align:bottom;border-bottom:2px solid #111;padding-bottom:6px;">
+                                <div style="font-size:16px;font-weight:800;letter-spacing:0.5px;">STORE RECEIVING SHEET</div>
+                                <div style="font-size:11px;color:#444;margin-top:2px;">Genesis Nutrition</div>
+                            </td>
+                            <td style="vertical-align:bottom;text-align:right;border-bottom:2px solid #111;padding-bottom:6px;font-size:11px;line-height:1.5;">
+                                <div><strong>PO #:</strong> ${escapeHtml(state.poNumber)}</div>
+                                <div><strong>Vendor:</strong> ${escapeHtml(state.vendor)}</div>
+                                <div><strong>Date:</strong> ${escapeHtml(state.date)}</div>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <!-- Store banner -->
+                    <div style="background:#111;color:#fff;padding:6px 10px;font-size:13px;font-weight:700;letter-spacing:1px;margin-bottom:8px;">
+                        STORE: ${escapeHtml(storeName)}
+                    </div>
+
+                    <!-- Items table -->
+                    <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+                        <colgroup>
+                            <col style="width:13%;">
+                            <col style="width:45%;">
+                            <col style="width:13%;">
+                            <col style="width:9%;">
+                            <col style="width:11%;">
+                            <col style="width:9%;">
+                        </colgroup>
+                        <thead style="display:table-header-group;">
+                            <tr>
+                                <th style="${headCell}">Sku</th>
+                                <th style="${headCell}">Description</th>
+                                <th style="${headCell}">Product Number</th>
+                                <th style="${headCell}text-align:center;">Order Qty</th>
+                                <th style="${headCell}text-align:right;">Reg. Sell Price</th>
+                                <th style="${headCell}text-align:center;">QTY (Count)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rowsHtml}
+                        </tbody>
+                    </table>
+
+                    <!-- Totals -->
+                    <div style="text-align:right;font-size:10px;font-weight:700;margin-top:6px;">
+                        Total Units: ${totalUnits} &nbsp;|&nbsp; Total Lines: ${storeRows.length}
+                    </div>
+
+                    <!-- Footer / sign-off -->
+                    <div style="margin-top:14px;border-top:1px solid #999;padding-top:8px;font-size:10px;">
+                        <table style="width:100%;border-collapse:collapse;margin-bottom:10px;">
+                            <tr>
+                                <td style="vertical-align:bottom;"><strong>CLERK:</strong> ______________________________</td>
+                                <td style="vertical-align:bottom;text-align:right;"><strong>Verified By Receiver:</strong> ____________________ &nbsp; <strong>Date:</strong> ____________</td>
+                            </tr>
+                        </table>
+                        <div style="text-align:center;font-weight:700;color:#b91c1c;border:1px solid #f0b4b4;background:#fdf2f2;padding:5px;letter-spacing:0.5px;">
+                            *** PLEASE CHECK ALL EXPIRY DATES *** / CHECK ALL CUSTOMER REQUESTS
+                        </div>
+                    </div>
+                </div>`;
+            });
+
+            return html;
+        }
+
+        // Renders the clean sheet into a hidden iframe and returns a promise
+        // that resolves with the iframe's body element. This is more reliable
+        // than capturing a freshly appended DOM node with html2canvas.
+        function renderCleanSheetIntoIframe(storeNames) {
+            return new Promise((resolve, reject) => {
+                const iframe = document.createElement('iframe');
+                iframe.style.position = 'fixed';
+                iframe.style.top = '0';
+                // Positioned off-screen (rather than visibility:hidden) so the
+                // document still lays out and paints normally - html2canvas
+                // will not render content that lives inside a visibility:hidden
+                // ancestor, which is what caused blank/broken PDF exports.
+                iframe.style.left = '-10000px';
+                iframe.style.width = '7.5in';
+                iframe.style.height = '11in';
+                iframe.style.border = '0';
+                iframe.style.padding = '0';
+                iframe.style.margin = '0';
+                iframe.style.background = '#ffffff';
+                iframe.onload = () => {
+                    try {
+                        const doc = iframe.contentDocument || iframe.contentWindow.document;
+                        doc.open();
+                        doc.write(`
+                            <!DOCTYPE html>
+                            <html>
+                            <head>
+                                <meta charset="utf-8">
+                                <style>
+                                    html, body { margin:0; padding:0; background:#ffffff; }
+                                    body { font-family:Arial,Helvetica,sans-serif; color:#111; }
+                                </style>
+                            </head>
+                            <body>${buildCleanPdfHtml(storeNames)}</body>
+                            </html>
+                        `);
+                        doc.close();
+                        // Wait for layout/paint inside the iframe.
+                        setTimeout(() => resolve(iframe), 150);
+                    } catch (e) {
+                        reject(e);
+                    }
+                };
+                iframe.onerror = () => reject(new Error('iframe load error'));
+                document.body.appendChild(iframe);
+            });
+        }
+
+        function exportPDF() {
+            if (typeof html2pdf === 'undefined') {
+                showToast("PDF library failed to load. Please check your internet connection.", "error");
+                return;
+            }
+
+            const select = document.getElementById('pdf-store-select');
+            const selected = select ? select.value : 'ALL';
+
+            // Determine which stores to include in the export.
+            let storeNames;
+            if (selected === 'ALL') {
+                storeNames = ["DAVIE", "MAIN", "WEST"].filter(s => state.cleanedRows.some(r => r.store.toUpperCase() === s));
+            } else {
+                storeNames = [selected];
+            }
+
+            if (storeNames.length === 0) {
+                showToast("No store data available to export.", "error");
+                return;
+            }
+
+            const filename = selected === 'ALL'
+                ? `PO_${state.poNumber}_${state.vendor}_Receiving_Sheets.pdf`
+                : `PO_${state.poNumber}_${state.vendor}_${selected}_Receiving_Sheet.pdf`;
+
+            const opt = {
+                margin: 0.5,
+                filename: filename,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: {
+                    scale: 2,
+                    useCORS: true,
+                    backgroundColor: '#ffffff',
+                    scrollX: 0,
+                    scrollY: 0
+                },
+                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
+                pagebreak: { mode: ['css', 'legacy'] }
+            };
+
+            showToast("Generating PDF, please wait...", "info");
+
+            let pdfIframe = null;
+
+            renderCleanSheetIntoIframe(storeNames)
+                .then(iframe => {
+                    pdfIframe = iframe;
+                    const doc = iframe.contentDocument || iframe.contentWindow.document;
+                    // html2canvas needs an actual DOM element to walk - passing
+                    // the Document itself (nodeType 9) is not a valid render
+                    // source and is what caused PDF exports to come out blank
+                    // or malformed. doc.body is the correct source element.
+                    return html2pdf().set(opt).from(doc.body).save();
+                })
+                .then(() => {
+                    if (pdfIframe && pdfIframe.parentNode) pdfIframe.parentNode.removeChild(pdfIframe);
+                    showToast("PDF exported successfully!", "success");
+                })
+                .catch(() => {
+                    if (pdfIframe && pdfIframe.parentNode) pdfIframe.parentNode.removeChild(pdfIframe);
+                    showToast("Failed to generate PDF. Please try again.", "error");
+                });
+        }
+
+        // Opens a clean, print-ready version of the selected store(s) in a new
+        // window and triggers the browser print dialog. This mirrors the PDF
+        // layout (simple header, slim store banner, fixed table layout, light
+        // borders, totals, and sign-off footer) instead of the on-screen card UI.
+        function printCleanSheets() {
+            const select = document.getElementById('pdf-store-select');
+            const selected = select ? select.value : 'ALL';
+
+            let storeNames;
+            if (selected === 'ALL') {
+                storeNames = ["DAVIE", "MAIN", "WEST"].filter(s => state.cleanedRows.some(r => r.store.toUpperCase() === s));
+            } else {
+                storeNames = [selected];
+            }
+
+            if (storeNames.length === 0) {
+                showToast("No store data available to print.", "error");
+                return;
+            }
+
+            const printWindow = window.open('', '_blank', 'width=820,height=1000,scrollbars=yes');
+            if (!printWindow) {
+                showToast("Please allow pop-ups to print store sheets.", "error");
+                return;
+            }
+
+            printWindow.document.open();
+            printWindow.document.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <title>PO ${escapeHtml(state.poNumber)} - Store Receiving Sheets</title>
+                    <style>
+                        @page {
+                            size: letter;
+                            margin: 0;
+                        }
+                        html, body {
+                            margin: 0;
+                            padding: 0.5in;
+                            background: #ffffff;
+                            color: #111;
+                            font-family: Arial, Helvetica, sans-serif;
+                            font-size: 10px;
+                        }
+                        .sheet {
+                            page-break-after: always;
+                        }
+                        .sheet:last-child {
+                            page-break-after: auto;
+                        }
+                        table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            table-layout: fixed;
+                        }
+                        th, td {
+                            border: 1px solid #d0d0d0;
+                            padding: 4px 6px;
+                            vertical-align: top;
+                            line-height: 1.3;
+                        }
+                        th {
+                            background: #e8e8e8;
+                            color: #111;
+                            font-size: 9.5px;
+                            font-weight: 700;
+                            text-transform: uppercase;
+                            text-align: left;
+                        }
+                        .header-table td {
+                            vertical-align: bottom;
+                            border-bottom: 2px solid #111;
+                            padding-bottom: 6px;
+                        }
+                        .store-banner {
+                            background: #111;
+                            color: #fff;
+                            padding: 6px 10px;
+                            font-size: 13px;
+                            font-weight: 700;
+                            letter-spacing: 1px;
+                            margin-bottom: 8px;
+                        }
+                        .totals {
+                            text-align: right;
+                            font-size: 10px;
+                            font-weight: 700;
+                            margin-top: 6px;
+                        }
+                        .signoff {
+                            margin-top: 14px;
+                            border-top: 1px solid #999;
+                            padding-top: 8px;
+                            font-size: 10px;
+                        }
+                        .warning {
+                            text-align: center;
+                            font-weight: 700;
+                            color: #b91c1c;
+                            border: 1px solid #f0b4b4;
+                            background: #fdf2f2;
+                            padding: 5px;
+                            letter-spacing: 0.5px;
+                        }
+                        @media print {
+                            .sheet { page-break-after: always; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    ${buildCleanPdfHtml(storeNames)}
+                </body>
+                </html>
+            `);
+            printWindow.document.close();
+
+            // Wait for the document to be fully laid out before printing.
+            // Printing immediately on 'load' can race ahead of layout for
+            // large tables (many rows and/or multiple stores), causing the
+            // browser to paginate against an incomplete render and print
+            // only the first page. Two animation frames plus a short buffer
+            // ensure the full document height is settled first.
+            printWindow.onload = () => {
+                const raf = printWindow.requestAnimationFrame ? printWindow.requestAnimationFrame.bind(printWindow) : setTimeout;
+                raf(() => {
+                    raf(() => {
+                        setTimeout(() => {
+                            try {
+                                printWindow.focus();
+                                printWindow.print();
+                            } catch (e) {
+                                showToast("Print dialog could not be opened automatically.", "error");
+                            }
+                        }, 150);
+                    });
+                });
+            };
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+    </script>
+</body>
+</html>
