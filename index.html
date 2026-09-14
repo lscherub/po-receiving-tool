@@ -174,7 +174,7 @@
                     <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 pt-2">
                         <div class="text-xs text-slate-500 flex items-center space-x-1">
                             <i class="fa-solid fa-circle-info text-blue-500"></i>
-                            <span>Tip: Copy straight from the POS, Excel, or Google Sheets and paste here — or upload a file. No Excel round-trip needed.</span>
+                            <span>Tip: Copy straight from the POS, Excel, or Google Sheets and paste here — or upload a file.</span>
                         </div>
                         <button onclick="processRawData()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-lg font-medium text-sm shadow-sm transition flex items-center space-x-2 whitespace-nowrap">
                             <span>Process & Clean Data</span>
@@ -307,9 +307,9 @@
         document.getElementById('po-date').value = new Date().toLocaleDateString('en-CA');
         // Application State
         let state = {
-            poNumber: "8695",
-            vendor: "MORPH",
-            date: "18-Jun",
+            poNumber: "",
+            vendor: "",
+            date: "",
             stores: { davie: true, main: true, west: true },
             rawText: "",
             parsedRows: [],
