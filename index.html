@@ -174,7 +174,7 @@
                     <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 pt-2">
                         <div class="text-xs text-slate-500 flex items-center space-x-1">
                             <i class="fa-solid fa-circle-info text-blue-500"></i>
-                            <span>Tip: Copy straight from the POS, Excel, or Google Sheets and paste here, or upload a file.</span>
+                            <span>Tip: Copy straight from the POS, Excel, or Google Sheets and paste here — or upload a file. No Excel round-trip needed.</span>
                         </div>
                         <button onclick="processRawData()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-lg font-medium text-sm shadow-sm transition flex items-center space-x-2 whitespace-nowrap">
                             <span>Process & Clean Data</span>
@@ -517,31 +517,38 @@ WEST\t99031254590\t\t\t\t\tMORPH PROTEIN PUCK STRW MATCHA LATTE SNGL ::38G\tMORP
             return colMap;
         }
         function buildRowFromCols(cols, colMap) {
-            const at = (i) => (i !== undefined && i < cols.length) ? cols[i] : '';
+            // IMPORTANT: POS columns are positional. A blank mapped cell means
+            // "blank in the POS" - never shift/hunt into other columns, or a
+            // value from the wrong column (e.g. List Cost) ends up labelled as
+            // Product Number / Reg. Sell Price.
+            const at = (i) => (i !== undefined && i < cols.length) ? String(cols[i] == null ? '' : cols[i]) : '';
             const storeVal = cleanStoreValue((colMap.store !== undefined) ? at(colMap.store) : (cols[0] || ''), (cols[0] || 'DAVIE'));
-            let skuVal = (colMap.sku !== undefined) ? at(colMap.sku) : (cols[1] || '');
-            if (!skuVal) {
-                for (const c of cols) { if (/^\d{4,}$/.test(String(c).replace(/,/g, ''))) { skuVal = c; break; } }
-            }
-            let descVal = (colMap.description !== undefined) ? at(colMap.description) : '';
-            if (!descVal) {
-                let best = '', bestScore = -1;
-                cols.forEach(c => {
-                    const t = String(c || '');
-                    const alpha = (t.match(/[A-Za-z]/g) || []).length;
-                    if (t.length >= 4 && alpha >= 4 && alpha > bestScore) { bestScore = alpha; best = t; }
-                });
-                descVal = best || cols[6] || cols[2] || '';
-            }
+            // SKU: exact mapped column only (falls back to legacy index 1).
+            // The old "first numeric token" hunt grabbed Product Number
+            // (e.g. 517125) whenever SKU was blank-shifted, hiding the real
+            // problem. Blank now stays blank so it can be spotted/fixed.
+            let skuVal = (colMap.sku !== undefined) ? at(colMap.sku) : String(cols[1] || '');
+            // Description: exact mapped column (falls back to legacy index 6).
+            // The old "longest alpha cell" hunt pulled Brand/other text when
+            // the description column shifted, so it now stays positional.
+            let descVal = (colMap.description !== undefined) ? at(colMap.description) : String(cols[6] || cols[2] || '');
+            // Product Number: exact mapped column only. Never borrow another
+            // column's value - a blank here is genuine POS data to preserve.
             const prodNumVal = (colMap.productNumber !== undefined) ? at(colMap.productNumber) : '';
-            let orderQtyVal = (colMap.orderQty !== undefined) ? at(colMap.orderQty) : '';
-            if (orderQtyVal === '' || orderQtyVal == null) orderQtyVal = (cols[14] || '1');
+            // Order Qty: exact mapped column; legacy fallback index 14.
+            let orderQtyVal = (colMap.orderQty !== undefined) ? at(colMap.orderQty) : String(cols[14] || '');
+            if (!orderQtyVal.trim()) orderQtyVal = '1';
             const qtyNum = parseQtyValue(orderQtyVal);
             orderQtyVal = isNaN(qtyNum) ? '1' : String(Math.trunc(qtyNum));
-            let priceVal = (colMap.regSellPrice !== undefined) ? at(colMap.regSellPrice) : '';
-            if (priceVal === '' || priceVal == null) priceVal = (cols[20] || '$0.00');
-            priceVal = cleanPriceValue(priceVal);
-            return { store: storeVal, sku: String(skuVal || '').trim(), description: String(descVal || '').trim(), productNumber: String(prodNumVal || '').trim(), orderQty: orderQtyVal, regSellPrice: priceVal };
+            // Reg. Sell Price: exact mapped column; legacy fallback index 20.
+            // The old code used `||` fallbacks, so a blank mapped price (or a
+            // falsy-but-valid "0") silently pulled cols[20] - often a
+            // different product's price or a blank that became $0.00 even
+            // though the real price sits in the mapped column. Positional now.
+            let priceVal = (colMap.regSellPrice !== undefined) ? at(colMap.regSellPrice) : String(cols[20] || '');
+            if (!priceVal.trim()) priceVal = '$0.00';
+            else priceVal = cleanPriceValue(priceVal);
+            return { store: storeVal, sku: skuVal.trim(), description: descVal.trim(), productNumber: prodNumVal.trim(), orderQty: orderQtyVal, regSellPrice: priceVal };
         }
 
         function detectDelimiter(sampleLines) {
@@ -598,8 +605,11 @@ WEST\t99031254590\t\t\t\t\tMORPH PROTEIN PUCK STRW MATCHA LATTE SNGL ::38G\tMORP
             return n;
         }
         function cleanPriceValue(v) {
-            if (v == null || v === '') return '$0.00';
-            const m = String(expandScientificNotation(String(v).trim())).replace(/,/g, '').match(/-?\d+(\.\d+)?/);
+            if (v == null) return '$0.00';
+            let s = String(expandScientificNotation(String(v).trim()));
+            if (!s.trim()) return '$0.00';
+            s = s.replace(/,/g, '');
+            const m = s.match(/-?\d+(\.\d+)?/);
             if (!m) return '$0.00';
             return '$' + m[0];
         }
@@ -625,10 +635,7 @@ WEST\t99031254590\t\t\t\t\tMORPH PROTEIN PUCK STRW MATCHA LATTE SNGL ::38G\tMORP
         }
         function stripWrappingQuotes(s) {
             s = (s == null ? '' : String(s)).trim();
-            if (s.length >= 2) {
-                const f = s[0], l = s[s.length - 1];
-                if ((f === '"' && l === '"') || (f === "'" && l === "'")) s = s.slice(1, -1);
-            }
+            if (s.length >= 2 && s[0] === '"' && s[s.length - 1] === '"') s = s.slice(1, -1);
             return s.trim();
         }
         function cleanCellValue(s) {
@@ -636,15 +643,19 @@ WEST\t99031254590\t\t\t\t\tMORPH PROTEIN PUCK STRW MATCHA LATTE SNGL ::38G\tMORP
             return expandScientificNotation(v);
         }
         function splitLineAware(line, delimiter) {
-            const out = []; let cur = ''; let inQ = false; let q = null;
+            // Only double-quotes open a quoted field. Single quotes are valid
+            // POS content (e.g. LAFE'S) and must NOT swallow delimiters - the
+            // old any-quote rule merged "LAFE'S 517125 $6.39 ..." into one
+            // cell, shifting every later column left and blanking price.
+            const out = []; let cur = ''; let inQ = false;
             for (let i = 0; i < line.length; i++) {
                 const ch = line[i];
                 if (inQ) {
-                    if (ch === q) {
-                        if (line[i + 1] === q) { cur += q; i++; } else inQ = false;
+                    if (ch === '"') {
+                        if (line[i + 1] === '"') { cur += '"'; i++; } else inQ = false;
                     } else cur += ch;
                 } else {
-                    if (ch === '"' || ch === "'") { inQ = true; q = ch; }
+                    if (ch === '"') inQ = true;
                     else if (ch === delimiter) { out.push(cur); cur = ''; }
                     else cur += ch;
                 }
