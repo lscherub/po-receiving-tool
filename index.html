@@ -12,6 +12,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- html2pdf.js for one-click PDF export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <!-- SheetJS for .xlsx/.xls file uploads (CSV is parsed natively) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -148,24 +150,33 @@
 
                 <!-- Raw Data Input Area -->
                 <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-4 lg:col-span-2 flex flex-col">
-                    <div class="flex justify-between items-center border-b pb-3">
+                    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 border-b pb-3">
                         <h2 class="font-bold text-slate-800 text-base flex items-center space-x-2">
                             <i class="fa-solid fa-table text-emerald-600"></i>
                             <span>Paste Raw POS Data (Tab-Separated or CSV)</span>
                         </h2>
-                        <span class="text-xs text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">Expected columns: Store, Sku, Description, Order Qty, Reg. Sell Price, etc.</span>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="text-xs text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">Expected columns: Store, Sku, Description, Order Qty, Reg. Sell Price, etc.</span>
+                            <label for="file-upload-input" title="Upload .csv, .xlsx, or .xls — processed exactly like pasted data" class="cursor-pointer bg-slate-800 hover:bg-slate-900 text-white text-xs px-3 py-1.5 rounded-md font-medium transition flex items-center space-x-1.5 shadow-sm">
+                                <i class="fa-solid fa-upload"></i>
+                                <span>Upload File (.csv, .xlsx, .xls)</span>
+                            </label>
+                            <input type="file" id="file-upload-input" accept=".csv,.xlsx,.xls,.txt,.tsv" class="hidden">
+                        </div>
                     </div>
+
+                    <div id="file-upload-status" class="hidden text-xs px-3 py-2 rounded-lg border flex items-center space-x-2"></div>
 
                     <div class="flex-1 flex flex-col">
-                        <textarea id="raw-data-input" rows="10" placeholder="Paste copied rows directly from your POS export spreadsheet here (includes headers or just data rows)..." class="w-full flex-1 p-3 font-mono text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50/50"></textarea>
+                        <textarea id="raw-data-input" rows="10" placeholder="Paste copied rows directly from your POS export spreadsheet here (includes headers or just data rows)...&#10;&#10;You can also copy straight from the POS screen/grid — tabs, commas, spaces, and multi-space columns are all detected automatically. Or use Upload File above for .csv / .xlsx / .xls." class="w-full flex-1 p-3 font-mono text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50/50"></textarea>
                     </div>
 
-                    <div class="flex justify-between items-center pt-2">
+                    <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 pt-2">
                         <div class="text-xs text-slate-500 flex items-center space-x-1">
                             <i class="fa-solid fa-circle-info text-blue-500"></i>
-                            <span>Tip: You can copy directly from Excel/Google Sheets and paste here.</span>
+                            <span>Tip: Copy straight from the POS, Excel, or Google Sheets and paste here, or upload a file.</span>
                         </div>
-                        <button onclick="processRawData()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-lg font-medium text-sm shadow-sm transition flex items-center space-x-2">
+                        <button onclick="processRawData()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-lg font-medium text-sm shadow-sm transition flex items-center space-x-2 whitespace-nowrap">
                             <span>Process & Clean Data</span>
                             <i class="fa-solid fa-arrow-right"></i>
                         </button>
@@ -291,9 +302,10 @@
     </main>
 
     <script>
+
         // Application State
         document.getElementById('po-date').value = new Date().toLocaleDateString('en-CA');
-
+        // Application State
         let state = {
             poNumber: "8695",
             vendor: "MORPH",
@@ -327,6 +339,9 @@ WEST\t99031254590\t\t\t\t\tMORPH PROTEIN PUCK STRW MATCHA LATTE SNGL ::38G\tMORP
 
         function resetAllData() {
             document.getElementById('raw-data-input').value = "";
+            const fi = document.getElementById('file-upload-input');
+            if (fi) fi.value = "";
+            setFileUploadStatus("", "info");
             document.getElementById('po-number').value = "8695";
             document.getElementById('po-vendor').value = "MORPH";
             document.getElementById('po-date').value = "2026-06-18";
@@ -344,6 +359,47 @@ WEST\t99031254590\t\t\t\t\tMORPH PROTEIN PUCK STRW MATCHA LATTE SNGL ::38G\tMORP
             const day = parseInt(parts[2], 10);
             if (isNaN(monthIdx) || isNaN(day) || monthIdx < 0 || monthIdx > 11) return dateStr;
             return `${day}-${months[monthIdx]}`;
+        }
+
+        // Excel frequently rewrites long numeric-looking values (SKUs,
+        // barcodes, product numbers) into scientific notation, e.g.
+        // "4.60701E+12". When that gets pasted in, expand it back into its
+        // full plain-digit form (e.g. "4607010000000") so SKUs display,
+        // filter, print, and export as complete numbers rather than
+        // truncated exponential text. This works purely on the string's own
+        // digits (no float parsing/round-tripping), so it never introduces
+        // precision error - it can only expand exactly what's present in the
+        // pasted text. Non-scientific-notation values are returned untouched.
+        function expandScientificNotation(value) {
+            if (typeof value !== 'string') return value;
+            const trimmed = value.trim();
+            const match = trimmed.match(/^([+-]?)(\d+)(?:\.(\d+))?[eE]([+-]?\d+)$/);
+            if (!match) return value;
+
+            const sign = match[1] === '-' ? '-' : '';
+            const intPart = match[2];
+            const fracPart = match[3] || '';
+            const exponent = parseInt(match[4], 10);
+
+            const digits = intPart + fracPart;
+            const pointPos = intPart.length + exponent;
+
+            let result;
+            if (pointPos <= 0) {
+                result = '0.' + '0'.repeat(-pointPos) + digits;
+            } else if (pointPos >= digits.length) {
+                result = digits + '0'.repeat(pointPos - digits.length);
+            } else {
+                result = digits.slice(0, pointPos) + '.' + digits.slice(pointPos);
+            }
+
+            // Drop insignificant trailing zeros/point introduced by padding
+            // the fractional side - never touches the whole-number case.
+            if (result.includes('.')) {
+                result = result.replace(/0+$/, '').replace(/\.$/, '');
+            }
+
+            return sign + result;
         }
 
         function showToast(message, type = "success") {
@@ -391,78 +447,416 @@ WEST\t99031254590\t\t\t\t\tMORPH PROTEIN PUCK STRW MATCHA LATTE SNGL ::38G\tMORP
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        function processRawData() {
-            const rawText = document.getElementById('raw-data-input').value.trim();
-            if (!rawText) {
-                showToast("Please paste raw POS data before proceeding.", "error");
+        function parsePosTextToRows(rawText) {
+            const normalized = normalizeClipboardText(rawText);
+            if (!normalized) return { rows: [], delimiter: '\t', hadHeader: false };
+            const lines = normalized.split('\n').filter(l => l.trim() !== '');
+            if (!lines.length) return { rows: [], delimiter: '\t', hadHeader: false };
+            const delimiter = detectDelimiter(lines);
+            const firstCols = splitRow(lines[0], delimiter);
+            const colMap = mapHeaderIndices(firstCols);
+            const headerLike = Object.keys(colMap).length > 0 || looksLikeHeaderRow(firstCols);
+            const startIdx = headerLike ? 1 : 0;
+            const parsedRows = [];
+            for (let i = startIdx; i < lines.length; i++) {
+                const line = lines[i];
+                if (!line || !line.trim()) continue;
+                const t = line.trim();
+                if (/^page \d+/i.test(t) || /^-{3,}$/.test(t)) continue;
+                const cols = splitRow(line, delimiter);
+                if (cols.filter(c => String(c).trim() !== '').length < 2) continue;
+                const row = buildRowFromCols(cols, colMap);
+                if (!row.sku && !row.description) continue;
+                parsedRows.push(row);
+            }
+            return { rows: parsedRows, delimiter: delimiter, hadHeader: headerLike };
+        }
+        function parseSheetMatrixToRows(matrix) {
+            if (!matrix || !matrix.length) return [];
+            const norm = matrix.map(r => (r || []).map(c => {
+                if (c === null || c === undefined) return '';
+                if (typeof c === 'number') return String(c);
+                return cleanCellValue(c);
+            }));
+            while (norm.length && norm[0].every(c => !String(c).trim())) norm.shift();
+            while (norm.length && norm[norm.length - 1].every(c => !String(c).trim())) norm.pop();
+            let maxCols = 0;
+            norm.forEach(r => {
+                let last = r.length - 1;
+                while (last >= 0 && !String(r[last]).trim()) last--;
+                if (last + 1 > maxCols) maxCols = last + 1;
+            });
+            const trimmed = norm.map(r => r.slice(0, maxCols)).filter(r => r.some(c => String(c).trim() !== ''));
+            if (!trimmed.length) return [];
+            const colMap = mapHeaderIndices(trimmed[0].map(c => String(c)));
+            const headerLike = Object.keys(colMap).length > 0 || looksLikeHeaderRow(trimmed[0].map(c => String(c)));
+            const startIdx = headerLike ? 1 : 0;
+            const rows = [];
+            for (let i = startIdx; i < trimmed.length; i++) {
+                const cols = trimmed[i].map(c => String(c));
+                if (cols.filter(c => c.trim() !== '').length < 2) continue;
+                const row = buildRowFromCols(cols, colMap);
+                if (!row.sku && !row.description) continue;
+                rows.push(row);
+            }
+            return rows;
+        }
+
+        function mapHeaderIndices(headers) {
+            const colMap = {};
+            headers.forEach((h, idx) => {
+                const lower = String(h || '').toLowerCase().trim();
+                if (!lower) return;
+                if (colMap.store === undefined && lower.includes('store')) colMap.store = idx;
+                else if (colMap.sku === undefined && (lower === 'sku' || lower.includes('sku') || lower.includes('upc') || lower.includes('barcode'))) colMap.sku = idx;
+                else if (colMap.description === undefined && (lower.includes('description') || lower === 'desc')) colMap.description = idx;
+                else if (colMap.productNumber === undefined && lower.includes('product number')) colMap.productNumber = idx;
+                else if (colMap.orderQty === undefined && (lower.includes('order qty') || lower === 'qty' || lower === 'quantity')) colMap.orderQty = idx;
+                else if (colMap.regSellPrice === undefined && (lower.includes('sell price') || lower.includes('retail'))) colMap.regSellPrice = idx;
+            });
+            return colMap;
+        }
+        function buildRowFromCols(cols, colMap) {
+            const at = (i) => (i !== undefined && i < cols.length) ? cols[i] : '';
+            const storeVal = cleanStoreValue((colMap.store !== undefined) ? at(colMap.store) : (cols[0] || ''), (cols[0] || 'DAVIE'));
+            let skuVal = (colMap.sku !== undefined) ? at(colMap.sku) : (cols[1] || '');
+            if (!skuVal) {
+                for (const c of cols) { if (/^\d{4,}$/.test(String(c).replace(/,/g, ''))) { skuVal = c; break; } }
+            }
+            let descVal = (colMap.description !== undefined) ? at(colMap.description) : '';
+            if (!descVal) {
+                let best = '', bestScore = -1;
+                cols.forEach(c => {
+                    const t = String(c || '');
+                    const alpha = (t.match(/[A-Za-z]/g) || []).length;
+                    if (t.length >= 4 && alpha >= 4 && alpha > bestScore) { bestScore = alpha; best = t; }
+                });
+                descVal = best || cols[6] || cols[2] || '';
+            }
+            const prodNumVal = (colMap.productNumber !== undefined) ? at(colMap.productNumber) : '';
+            let orderQtyVal = (colMap.orderQty !== undefined) ? at(colMap.orderQty) : '';
+            if (orderQtyVal === '' || orderQtyVal == null) orderQtyVal = (cols[14] || '1');
+            const qtyNum = parseQtyValue(orderQtyVal);
+            orderQtyVal = isNaN(qtyNum) ? '1' : String(Math.trunc(qtyNum));
+            let priceVal = (colMap.regSellPrice !== undefined) ? at(colMap.regSellPrice) : '';
+            if (priceVal === '' || priceVal == null) priceVal = (cols[20] || '$0.00');
+            priceVal = cleanPriceValue(priceVal);
+            return { store: storeVal, sku: String(skuVal || '').trim(), description: String(descVal || '').trim(), productNumber: String(prodNumVal || '').trim(), orderQty: orderQtyVal, regSellPrice: priceVal };
+        }
+
+        function detectDelimiter(sampleLines) {
+            const sample = sampleLines.slice(0, Math.min(sampleLines.length, 8));
+            const scoreFor = (delim) => {
+                let total = 0, usable = 0;
+                sample.forEach(line => {
+                    if (!line.trim()) return;
+                    if (delim === 'MS') {
+                        if (/ {2,}|\t/.test(line)) { total += line.trim().split(/ {2,}|\t+/).length * 10; usable++; }
+                        return;
+                    }
+                    const sc = scoreSplit(line, delim);
+                    if (sc > 0) { total += sc; usable++; }
+                });
+                return usable ? total / sample.length : -1;
+            };
+            const t = scoreFor('\t') + 5, c = scoreFor(','), sc2 = scoreFor(';'), p = scoreFor('|'), m = scoreFor('MS');
+            let best = '\t', bestScore = t;
+            if (c > bestScore) { bestScore = c; best = ','; }
+            if (sc2 > bestScore) { bestScore = sc2; best = ';'; }
+            if (p > bestScore) { bestScore = p; best = '|'; }
+            if (m > bestScore) { bestScore = m; best = 'MULTI_SPACE'; }
+            if (bestScore < 0) {
+                if (sample.some(l => l.includes('\t'))) return '\t';
+                if (sample.some(l => l.includes(','))) return ',';
+                if (sample.some(l => / {2,}/.test(l))) return 'MULTI_SPACE';
+                return '\t';
+            }
+            return best;
+        }
+        function splitRow(line, delimiter) {
+            let cols;
+            if (delimiter === 'MULTI_SPACE') cols = line.trim().split(/ {2,}|\t+/);
+            else cols = splitLineAware(line, delimiter);
+            return cols.map(cleanCellValue);
+        }
+        function looksLikeHeaderRow(cols) {
+            const joined = cols.join(' ').toLowerCase();
+            let count = 0;
+            ['store','sku','description','product','order qty','qty','sell price','retail','upc','barcode','item'].forEach(h => { if (joined.includes(h)) count++; });
+            return count >= 2;
+        }
+        function parseQtyValue(v) {
+            if (v == null) return NaN;
+            let s = String(v).trim().replace(/,/g, '');
+            if (!s) return NaN;
+            let neg = false;
+            if (/^\(.*\)$/.test(s)) { neg = true; s = s.slice(1, -1); }
+            const m = s.match(/-?\d+(\.\d+)?/);
+            if (!m) return NaN;
+            let n = parseFloat(m[0]);
+            if (neg) n = -Math.abs(n);
+            return n;
+        }
+        function cleanPriceValue(v) {
+            if (v == null || v === '') return '$0.00';
+            const m = String(expandScientificNotation(String(v).trim())).replace(/,/g, '').match(/-?\d+(\.\d+)?/);
+            if (!m) return '$0.00';
+            return '$' + m[0];
+        }
+        function cleanStoreValue(v, fallback) {
+            let s = (v == null ? '' : String(v)).trim().toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim();
+            if (!s) return fallback || 'DAVIE';
+            if (s.includes('DAVIE')) return 'DAVIE';
+            if (s.includes('MAIN')) return 'MAIN';
+            if (s.includes('WEST')) return 'WEST';
+            return s.split(/\s+/)[0] || s;
+        }
+
+        function normalizeClipboardText(text) {
+            if (text == null) return '';
+            let s = String(text).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            s = s.replace(/[\u200B\u200C\u200D\uFEFF]/g, '');
+            s = s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+            s = s.replace(/[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g, ' ');
+            const lines = s.split('\n').map(l => l.replace(/[ \t]+$/g, ''));
+            while (lines.length && !lines[0].trim()) lines.shift();
+            while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+            return lines.join('\n');
+        }
+        function stripWrappingQuotes(s) {
+            s = (s == null ? '' : String(s)).trim();
+            if (s.length >= 2) {
+                const f = s[0], l = s[s.length - 1];
+                if ((f === '"' && l === '"') || (f === "'" && l === "'")) s = s.slice(1, -1);
+            }
+            return s.trim();
+        }
+        function cleanCellValue(s) {
+            let v = stripWrappingQuotes(s).replace(/\s+/g, ' ').trim();
+            return expandScientificNotation(v);
+        }
+        function splitLineAware(line, delimiter) {
+            const out = []; let cur = ''; let inQ = false; let q = null;
+            for (let i = 0; i < line.length; i++) {
+                const ch = line[i];
+                if (inQ) {
+                    if (ch === q) {
+                        if (line[i + 1] === q) { cur += q; i++; } else inQ = false;
+                    } else cur += ch;
+                } else {
+                    if (ch === '"' || ch === "'") { inQ = true; q = ch; }
+                    else if (ch === delimiter) { out.push(cur); cur = ''; }
+                    else cur += ch;
+                }
+            }
+            out.push(cur);
+            return out;
+        }
+        function scoreSplit(line, delimiter) {
+            if (!line.includes(delimiter)) return -1;
+            const parts = splitLineAware(line, delimiter);
+            if (parts.length < 2) return -1;
+            const nonEmpty = parts.filter(p => p.trim() !== '').length;
+            return parts.length * 10 + nonEmpty;
+        }
+
+        function cleanHtmlCellText(text) {
+            if (text == null) return '';
+            let s = String(text).replace(/ /g, ' ');
+            s = s.replace(/[\u200B-\u200D\uFEFF]/g, '');
+            s = s.replace(/[ \t\f\v   -   　]+/g, ' ');
+            return expandScientificNotation(s.trim());
+        }
+        function pickBestHtmlTable(tables) {
+            let best = tables[0], bestScore = -1;
+            tables.forEach(t => {
+                const rows = t.querySelectorAll('tr').length;
+                const cells = t.querySelectorAll('th, td').length;
+                const nested = t.querySelectorAll('table').length;
+                const score = rows * 10 + cells - nested * 100;
+                if (score > bestScore) { bestScore = score; best = t; }
+            });
+            return best;
+        }
+
+        function htmlFallbackToText(html) {
+            try {
+                const doc = new DOMParser().parseFromString(html, 'text/html');
+                if (!doc || !doc.body) return '';
+                const rows = Array.from(doc.body.querySelectorAll('tr'));
+                if (rows.length) {
+                    return rows.map(tr => {
+                        const cells = Array.from(tr.querySelectorAll('th, td'));
+                        if (cells.length) return cells.map(c => cleanHtmlCellText(c.textContent || '')).join('\t');
+                        return cleanHtmlCellText(tr.textContent || '');
+                    }).join('\n');
+                }
+                return cleanHtmlCellText(doc.body.textContent || '');
+            } catch (e) { return ''; }
+        }
+
+        function htmlTableToMatrix(html) {
+            if (!html || !/<(table|tr|td|th)/i.test(html)) return [];
+            let doc = null;
+            try { doc = new DOMParser().parseFromString(html, 'text/html'); } catch (e) { return []; }
+            if (!doc) return [];
+            const tables = Array.from(doc.querySelectorAll('table'));
+            const table = tables.length ? pickBestHtmlTable(tables) : null;
+            const allRows = table ? Array.from(table.querySelectorAll('tr')) : Array.from(doc.querySelectorAll('tr'));
+            const rows = (table ? allRows.filter(tr => tr.closest('table') === table) : allRows).filter(tr => tr.querySelectorAll('th, td').length);
+            if (!rows.length) return [];
+            const matrix = [];
+            const pending = [];
+            rows.forEach(tr => {
+                const out = [];
+                let col = 0;
+                const takePending = () => {
+                    while (pending[col] && pending[col].left > 0) {
+                        out[col] = pending[col].text;
+                        pending[col].left--;
+                        if (!pending[col].left) pending[col] = null;
+                        col++;
+                    }
+                };
+                takePending();
+                Array.from(tr.children).forEach(cell => {
+                    const tag = (cell.tagName || '').toUpperCase();
+                    if (tag !== 'TD' && tag !== 'TH') return;
+                    takePending();
+                    const text = cleanHtmlCellText(cell.textContent || '');
+                    const cs = Math.max(1, parseInt(cell.getAttribute('colspan') || '1', 10) || 1);
+                    const rs = Math.max(1, parseInt(cell.getAttribute('rowspan') || '1', 10) || 1);
+                    for (let k = 0; k < cs; k++) {
+                        out[col] = (k === 0) ? text : '';
+                        if (rs > 1) pending[col] = { text: (k === 0) ? text : '', left: rs - 1 };
+                        col++;
+                    }
+                    takePending();
+                });
+                takePending();
+                matrix.push(out);
+            });
+            let width = 0;
+            matrix.forEach(r => { width = Math.max(width, r.length); });
+            return matrix.map(r => {
+                for (let i = 0; i < width; i++) if (!(i in r)) r[i] = '';
+                return r.map(c => (c == null ? '' : String(c)));
+            }).filter(r => r.some(c => c.trim() !== ''));
+        }
+        function htmlMatrixToTsv(matrix) {
+            return matrix.map(r => r.map(c => cleanCellValue(String(c == null ? '' : c).replace(/[\t\r\n]+/g, ' '))).join('\t')).join('\n');
+        }
+        function insertTextAtCursor(el, text) {
+            const start = (el.selectionStart == null ? el.value.length : el.selectionStart);
+            const end = (el.selectionEnd == null ? start : el.selectionEnd);
+            el.value = el.value.slice(0, start) + text + el.value.slice(end);
+            const pos = start + text.length;
+            try { el.setSelectionRange(pos, pos); } catch (err) {}
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        function setFileUploadStatus(message, type) {
+            const el = document.getElementById('file-upload-status');
+            if (!el) return;
+            if (!message) { el.classList.add('hidden'); el.textContent = ''; return; }
+            el.classList.remove('hidden');
+            let cls = 'text-xs px-3 py-2 rounded-lg border flex items-center space-x-2 ';
+            if (type === 'error') cls += 'bg-rose-50 text-rose-800 border-rose-200';
+            else if (type === 'success') cls += 'bg-emerald-50 text-emerald-800 border-emerald-200';
+            else cls += 'bg-blue-50 text-blue-800 border-blue-200';
+            el.className = cls;
+            el.innerHTML = '';
+            const icon = document.createElement('i');
+            icon.className = 'fa-solid ' + (type === 'error' ? 'fa-circle-exclamation' : type === 'success' ? 'fa-circle-check' : 'fa-circle-info');
+            const span = document.createElement('span');
+            span.textContent = message;
+            el.appendChild(icon); el.appendChild(span);
+        }
+        function handleFileUpload(file) {
+            if (!file) return;
+            const name = file.name || 'uploaded file';
+            const ext = (name.split('.').pop() || '').toLowerCase();
+            setFileUploadStatus('Reading "' + name + '"...', 'info');
+            const finishWithText = (text) => {
+                document.getElementById('raw-data-input').value = normalizeClipboardText(text);
+                setFileUploadStatus('Loaded "' + name + '" - click "Process & Clean Data" to continue.', 'success');
+                showToast('File "' + name + '" loaded. Click Process & Clean Data.', 'success');
+            };
+            const finishWithMatrix = (matrix, sheetLabel) => {
+                const rows = parseSheetMatrixToRows(matrix);
+                if (!rows.length) {
+                    setFileUploadStatus('No data rows in "' + name + '"' + (sheetLabel ? ' (' + sheetLabel + ')' : '') + '.', 'error');
+                    showToast('No data rows found in file.', 'error');
+                    return;
+                }
+                const tsv = matrix.map(r => (r || []).map(c => (c === null || c === undefined ? '' : String(c))).join('\t')).join('\n');
+                document.getElementById('raw-data-input').value = normalizeClipboardText(tsv);
+                setFileUploadStatus('Loaded ' + rows.length + ' rows from "' + name + '" - processing now.', 'success');
+                processRawData();
+            };
+            if (ext === 'csv' || ext === 'txt' || ext === 'tsv') {
+                const reader = new FileReader();
+                reader.onload = () => finishWithText(String(reader.result || ''));
+                reader.onerror = () => { setFileUploadStatus('Could not read "' + name + '".', 'error'); };
+                reader.readAsText(file);
                 return;
             }
+            if (ext === 'xlsx' || ext === 'xls') {
+                if (typeof XLSX === 'undefined') {
+                    setFileUploadStatus('Excel library failed to load. Save as .csv and retry.', 'error');
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = () => {
+                    try {
+                        const wb = XLSX.read(new Uint8Array(reader.result), { type: 'array' });
+                        let bestSheet = wb.SheetNames[0], bestCount = -1, bestMatrix = null;
+                        wb.SheetNames.forEach(sn => {
+                            const m = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '', raw: true });
+                            const n = m.filter(r => (r || []).some(c => String(c).trim() !== '')).length;
+                            if (n > bestCount) { bestCount = n; bestSheet = sn; bestMatrix = m; }
+                        });
+                        finishWithMatrix(bestMatrix, 'sheet: ' + bestSheet);
+                    } catch (e) { setFileUploadStatus('Could not parse Excel. Try .csv.', 'error'); }
+                };
+                reader.onerror = () => setFileUploadStatus('Could not read file.', 'error');
+                reader.readAsArrayBuffer(file);
+                return;
+            }
+            setFileUploadStatus('Unsupported type. Use .csv, .xlsx, .xls.', 'error');
+        }
 
+        function collectPoMeta() {
             state.poNumber = document.getElementById('po-number').value.trim() || "8695";
             state.vendor = document.getElementById('po-vendor').value.trim() || "VENDOR";
             state.date = formatDateForDisplay(document.getElementById('po-date').value.trim()) || "18-Jun";
             state.stores.davie = document.getElementById('store-davie').checked;
             state.stores.main = document.getElementById('store-main').checked;
             state.stores.west = document.getElementById('store-west').checked;
-
-            const lines = rawText.split('\n');
-            if (lines.length < 2) {
-                showToast("Insufficient data rows found. Please check your paste format.", "error");
-                return;
-            }
-
-            // Detect delimiter (Tab or Comma)
-            const firstLine = lines[0];
-            const delimiter = firstLine.includes('\t') ? '\t' : (firstLine.includes(',') ? ',' : '\t');
-            const headers = firstLine.split(delimiter).map(h => h.trim().replace(/^["']|["']$/g, ''));
-
-            // Map header indices
-            const colMap = {};
-            headers.forEach((h, idx) => {
-                const lower = h.toLowerCase();
-                if (lower.includes('store')) colMap.store = idx;
-                else if (lower === 'sku' || lower.includes('sku')) colMap.sku = idx;
-                else if (lower.includes('description')) colMap.description = idx;
-                else if (lower.includes('product number') || lower === 'product #') colMap.productNumber = idx;
-                else if (lower.includes('order qty') || lower === 'qty' || lower === 'order quantity') colMap.orderQty = idx;
-                else if (lower.includes('reg. sell price') || lower.includes('sell price') || lower.includes('retail')) colMap.regSellPrice = idx;
-            });
-
-            // Fallback default index guesses if headers are unconventional or missing
-            const parsedRows = [];
-            for (let i = 1; i < lines.length; i++) {
-                const line = lines[i].trim();
-                if (!line) continue;
-                const cols = line.split(delimiter).map(c => c.trim().replace(/^["']|["']$/g, ''));
-                if (cols.length < 3) continue;
-
-                const storeVal = (colMap.store !== undefined && cols[colMap.store]) ? cols[colMap.store].toUpperCase() : (cols[0]?.toUpperCase() || "DAVIE");
-                const skuVal = (colMap.sku !== undefined && cols[colMap.sku]) ? cols[colMap.sku] : (cols[1] || "");
-                const descVal = (colMap.description !== undefined && cols[colMap.description]) ? cols[colMap.description] : (cols[6] || cols[2] || "");
-                const prodNumVal = (colMap.productNumber !== undefined && cols[colMap.productNumber]) ? cols[colMap.productNumber] : "";
-                const orderQtyVal = (colMap.orderQty !== undefined && cols[colMap.orderQty]) ? cols[colMap.orderQty] : (cols[14] || "1");
-                let priceVal = (colMap.regSellPrice !== undefined && cols[colMap.regSellPrice]) ? cols[colMap.regSellPrice] : (cols[20] || "$0.00");
-                if (priceVal && !priceVal.startsWith('$')) priceVal = '$' + priceVal;
-
-                parsedRows.push({
-                    store: storeVal,
-                    sku: skuVal,
-                    description: descVal,
-                    productNumber: prodNumVal,
-                    orderQty: orderQtyVal,
-                    regSellPrice: priceVal
-                });
-            }
-
-            if (parsedRows.length === 0) {
+        }
+        function finishProcessWithRows(parsedRows) {
+            if (!parsedRows.length) {
                 showToast("Could not parse valid data rows. Please ensure columns match POS export format.", "error");
                 return;
             }
-
             state.cleanedRows = parsedRows;
             renderCleanedPreview();
             goToStep(2);
-            showToast(`Successfully cleaned ${parsedRows.length} item rows!`, "success");
+            showToast("Successfully cleaned " + parsedRows.length + " item rows!", "success");
+        }
+        function processRawData() {
+            const rawText = document.getElementById('raw-data-input').value;
+            if (!rawText || !rawText.trim()) {
+                showToast("Please paste raw POS data before proceeding.", "error");
+                return;
+            }
+            collectPoMeta();
+            const result = parsePosTextToRows(rawText);
+            if (!result.rows.length) {
+                showToast("Could not parse valid data rows. Try copying again or upload .csv/.xlsx.", "error");
+                return;
+            }
+            finishProcessWithRows(result.rows);
         }
 
         function renderCleanedPreview() {
@@ -1051,6 +1445,55 @@ WEST\t99031254590\t\t\t\t\tMORPH PROTEIN PUCK STRW MATCHA LATTE SNGL ::38G\tMORP
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#039;');
         }
+
+        // Wire up Upload File + smart POS paste handling (no behaviour change
+        // to existing buttons/flows - only additional listeners).
+        document.addEventListener('DOMContentLoaded', () => {
+            const fileInput = document.getElementById('file-upload-input');
+            if (fileInput) {
+                fileInput.addEventListener('change', (e) => {
+                    const f = e.target.files && e.target.files[0];
+                    if (f) handleFileUpload(f);
+                });
+            }
+            const rawInput = document.getElementById('raw-data-input');
+            if (rawInput) {
+                rawInput.addEventListener('paste', (e) => {
+                    const cd = e.clipboardData;
+                    if (!cd) return;
+                    const types = cd.types ? Array.from(cd.types) : [];
+                    const html = types.includes('text/html') ? cd.getData('text/html') : '';
+                    const matrix = html ? htmlTableToMatrix(html) : [];
+                    if (matrix.length) {
+                        e.preventDefault();
+                        insertTextAtCursor(e.target, normalizeClipboardText(htmlMatrixToTsv(matrix)));
+                        showToast('POS table pasted: ' + matrix.length + ' row(s) converted.', 'success');
+                        return;
+                    }
+                    if (html) {
+                        const fallback = htmlFallbackToText(html);
+                        if (fallback && fallback.trim()) {
+                            e.preventDefault();
+                            insertTextAtCursor(e.target, normalizeClipboardText(fallback));
+                            return;
+                        }
+                    }
+                    const text = cd.getData('text/plain');
+                    if (!text) return;
+                    e.preventDefault();
+                    insertTextAtCursor(e.target, normalizeClipboardText(text));
+                });
+                // Catch-all normaliser for HTML-table pastes and drag-drops.
+                rawInput.addEventListener('input', () => {
+                    const pos = rawInput.selectionStart;
+                    const fixed = normalizeClipboardText(rawInput.value);
+                    if (fixed !== rawInput.value) {
+                        rawInput.value = fixed;
+                        try { rawInput.setSelectionRange(pos, pos); } catch (err) {}
+                    }
+                });
+            }
+        });
     </script>
 </body>
 </html>
