@@ -33,7 +33,7 @@ export default async function handler(req, res) {
     // Allowlist: internal store mailboxes only. Prevents this endpoint
     // from being abused as an open relay.
     const ALLOWED = new Set([
-      'davie@genesisnutrition.ca',
+      'loveleen@genesisnutrition.ca',
       'east@genesisnutrition.ca',
       'west@genesisnutrition.ca',
     ]);
