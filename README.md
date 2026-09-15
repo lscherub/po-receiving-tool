@@ -1,16 +1,25 @@
-# PO & Receiving Suite — Vercel deploy (static HTML + SMTP2GO email API)
+# PO & Receiving Suite — Vercel deploy (static HTML + SMTP2GO email API + tracked report links)
 
 This folder is a deployment copy of the single-page app (`index.html`, unchanged
-framework — still plain HTML/JS + Tailwind CDN + html2pdf.js) plus one secure
-serverless endpoint:
+framework — still plain HTML/JS + Tailwind CDN + html2pdf.js) plus secure
+serverless endpoints:
 
 - `index.html` — existing app + a **Send Internal Email** button/modal on the
   export page (Step 3). Reuses `pdf-store-select`, `buildCleanPdfHtml()`,
   `renderCleanSheetIntoIframe()`, and the same html2pdf options as Export PDF.
-- `api/send-email.js` — Vercel serverless function. Holds `SMTP2GO_API_KEY`
-  server-side only, allowlists the 3 internal recipients, and calls
-  `POST https://api.smtp2go.com/v3/email/send` with the PDF attached
-  (`filename` / `fileblob` base64 / `mimetype: application/pdf`).
+  Now also mints a per-send `reportId` and posts the same PDF bytes +
+  store scope for tracking.
+- `api/send-email.js` — holds `SMTP2GO_API_KEY` server-side only, allowlists
+  the 3 internal recipients, stores the PDF under the report ID, appends a
+  **View Report** button (`/report/<id>`) to the email, and still attaches
+  the PDF (`filename` / `fileblob` base64 / `mimetype: application/pdf`).
+- `api/report/[id].js` (+ `vercel.json` rewrite `/report/:id` → this) —
+  logs `{at, ip, ua}` on each view, then shows the correct PDF (scope-aware,
+  incl. All Stores) with a Download button. `?format=pdf` serves raw bytes.
+- `api/report-status.js` — `GET /api/report-status?id=<id>` returns
+  `accessCount / firstAccessedAt / lastAccessedAt / accesses[]`.
+- `lib/report-store.js` — storage layer. Durable **Vercel Blob** when
+  `BLOB_READ_WRITE_TOKEN` is present, else ephemeral in-memory (dev only).
 
 ## 1. SMTP2GO setup (5 min)
 
@@ -31,10 +40,15 @@ npx vercel --prod   # deploy production
 
 Option B — GitHub:
 
-1. Push **this folder's contents** (`index.html`, `api/`, `vercel.json`,
+1. Push **this folder's contents** (`index.html`, `api/`, `lib/`, `vercel.json`,
    `package.json`) to a repo.
 2. Vercel Dashboard → **Add New → Project → Import** the repo. Framework
-   preset: **Other**. No build command needed.
+   preset: **Other**. No build command needed. (`npm install` picks up
+   `@vercel/blob` for report storage.)
+3. **Recommended for tracking:** Vercel Dashboard → **Storage → Create →
+   Blob**, then **Connect** it to this project (auto-adds
+   `BLOB_READ_WRITE_TOKEN`). Without it, `/report/<id>` still works but
+   access logs are lost on cold starts/restarts.
 
 ## 3. Environment variables (Vercel Dashboard → Project → Settings → Environment Variables)
 
@@ -42,6 +56,7 @@ Option B — GitHub:
 | ----------------- | ---------------------------- | ----------- |
 | `SMTP2GO_API_KEY` | `api-xxxxxxxxxxxxxxxx`       | Production (+ Preview) |
 | `SMTP2GO_SENDER`  | `orders@genesisnutrition.ca` | Production (+ Preview) |
+| `BLOB_READ_WRITE_TOKEN` | *(auto-added when Blob store connected)* | Production (+ Preview) |
 
 Redeploy after adding them.
 
@@ -52,8 +67,15 @@ Redeploy after adding them.
    **Send Internal Email**.
 3. Recipients auto-check to match the selector; subject/body auto-fill like
    `PO #8810 (MORPH) - Receiving Sheet - DAVIE - 2026-09-15`.
-4. **Send with PDF** → success toast + modal status. Check inbox +
-   SMTP2GO Dashboard → Activity.
+4. **Send with PDF + Tracked Link** → success toast + modal status + tracked-link
+   box with a **Check views** button. Check inbox: email has the PDF attachment
+   AND a **View Report** button.
+5. Click **View Report** → viewer page shows the right store scope (try DAVIE vs
+   All Stores) with inline PDF + Download. Each open appends
+   `{at, ip, ua}` server-side.
+6. Check access: modal **Check views**, or
+   `GET https://<your-app>.vercel.app/api/report-status?id=<reportId>` → JSON
+   with `accessCount / firstAccessedAt / lastAccessedAt / accesses[]`.
 
 ## 5. Local test (optional)
 

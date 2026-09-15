@@ -318,12 +318,13 @@
                             <textarea id="email-body" rows="6" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
                         </div>
                         <div id="email-status" class="hidden text-xs px-3 py-2 rounded-lg border"></div>
+                        <div id="email-tracking" class="hidden text-xs px-3 py-2 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-900 space-y-1"></div>
                     </div>
                     <div class="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex justify-end items-center gap-2">
                         <button onclick="closeEmailModal()" class="border border-slate-300 hover:bg-white text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition">Cancel</button>
                         <button id="email-send-btn" onclick="sendInternalEmail()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2">
                             <i class="fa-solid fa-paper-plane"></i>
-                            <span>Send with PDF</span>
+                            <span>Send with PDF + Tracked Link</span>
                         </button>
                     </div>
                 </div>
@@ -1481,6 +1482,52 @@ WEST\t99031254590\t\t\t\t\tMORPH PROTEIN PUCK STRW MATCHA LATTE SNGL ::38G\tMORP
             document.getElementById('email-modal').classList.add('hidden');
         }
 
+        function makeReportId() {
+            try {
+                if (window.crypto && crypto.getRandomValues) {
+                    var b = new Uint8Array(12);
+                    crypto.getRandomValues(b);
+                    var s = '';
+                    for (var i = 0; i < b.length; i++) s += ('0' + b[i].toString(16)).slice(-2);
+                    return s;
+                }
+            } catch (e) {}
+            return 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+        }
+
+        function setTrackingBox(info) {
+            var el = document.getElementById('email-tracking');
+            if (!el) return;
+            if (!info) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+            el.classList.remove('hidden');
+            var abs = info.viewUrl;
+            try { if (abs.charAt(0) === '/') abs = window.location.origin + abs; } catch (e) {}
+            el.innerHTML = ''
+                + '<div><strong>Tracked link:</strong> <a href="' + info.viewUrl + '" target="_blank" rel="noopener" class="text-indigo-700 underline break-all">' + abs + '</a></div>'
+                + '<div class="text-slate-500">Opening it is logged. <button onclick="checkReportStatus()" class="text-indigo-700 underline">Check views</button> <span id="email-tracking-status"></span></div>';
+            el.setAttribute('data-report-id', info.reportId);
+        }
+
+        function checkReportStatus() {
+            var el = document.getElementById('email-tracking');
+            var out = document.getElementById('email-tracking-status');
+            var id = el ? el.getAttribute('data-report-id') : null;
+            if (!id || !out) return;
+            out.textContent = 'checking...';
+            fetch('/api/report-status?id=' + encodeURIComponent(id)).then(function (r) {
+                return r.json().then(function (j) { return { ok: r.ok, body: j }; });
+            }).then(function (res2) {
+                if (res2.ok && res2.body && res2.body.ok) {
+                    var n = res2.body.accessCount || 0;
+                    out.textContent = n === 0
+                        ? 'not opened yet (' + (res2.body.storage || '') + ').'
+                        : 'opened ' + n + 'x, last: ' + (res2.body.lastAccessedAt || '?');
+                } else {
+                    out.textContent = (res2.body && res2.body.error) || 'status failed';
+                }
+            }).catch(function () { out.textContent = 'status failed'; });
+        }
+
         function setEmailStatus(msg, type, hide) {
             var el = document.getElementById('email-status');
             if (!el) return;
@@ -1540,10 +1587,15 @@ WEST\t99031254590\t\t\t\t\tMORPH PROTEIN PUCK STRW MATCHA LATTE SNGL ::38G\tMORP
             var bodyText = document.getElementById('email-body').value.trim();
             if (!subject) { setEmailStatus('Subject is required.', 'error'); return; }
             var filename = getPdfFilename(sel.selected);
+            // Unique ID for this exact send: server stores the PDF under it and
+            // /report/<id> serves + tracks it. Generated client-side so the
+            // email body the user previewed already names the right report.
+            var reportId = makeReportId();
             var btn = document.getElementById('email-send-btn');
             btn.disabled = true;
             btn.classList.add('opacity-60', 'cursor-not-allowed');
             setEmailStatus('Generating PDF and sending email, please wait...', 'info');
+            setTrackingBox(null);
             generatePdfBase64(sel.storeNames, filename).then(function (base64) {
                 return fetch('/api/send-email', {
                     method: 'POST',
@@ -1555,15 +1607,23 @@ WEST\t99031254590\t\t\t\t\tMORPH PROTEIN PUCK STRW MATCHA LATTE SNGL ::38G\tMORP
                         htmlBody: '<p>' + escapeHtml(bodyText || subject).replace(/\n/g, '<br>') + '</p>',
                         filename: filename,
                         fileblob: base64,
-                        mimetype: 'application/pdf'
+                        mimetype: 'application/pdf',
+                        reportId: reportId,
+                        poNumber: state.poNumber,
+                        vendor: state.vendor,
+                        date: state.date,
+                        selected: sel.selected,
+                        storeNames: sel.storeNames
                     })
                 }).then(function (r) {
                     return r.json().then(function (j) { return { ok: r.ok, body: j }; });
                 });
             }).then(function (result) {
                 if (result.ok && result.body && result.body.ok) {
-                    setEmailStatus('Sent to ' + recipients.join(', ') + ' with ' + filename + ' attached.', 'success');
+                    var viewUrl = (result.body && result.body.viewUrl) || ('/report/' + reportId);
+                    setEmailStatus('Sent to ' + recipients.join(', ') + ' with ' + filename + ' attached + View Report link.', 'success');
                     showToast('Internal email sent successfully!', 'success');
+                    setTrackingBox({ reportId: (result.body && result.body.reportId) || reportId, viewUrl: viewUrl, filename: filename });
                 } else {
                     var msg = (result.body && result.body.error) || 'Failed to send email.';
                     setEmailStatus(msg, 'error');
