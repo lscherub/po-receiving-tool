@@ -1067,31 +1067,68 @@ WEST\t99031254590\t\t\t\t\tMORPH PROTEIN PUCK STRW MATCHA LATTE SNGL ::38G\tMORP
             document.body.removeChild(textarea);
         }
 
-        function exportCSV() {
-            let csvContent = "data:text/csv;charset=utf-8,";
-            csvContent += "Store,Sku,Description,Product Number,Order Qty,Reg. Sell Price,QTY Count\r\n";
+        function csvEscapeField(value) {
+            const s = (value === null || value === undefined) ? '' : String(value);
+            if (/[",\r\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+            return s;
+        }
 
-            state.cleanedRows.forEach(r => {
-                const row = [
-                    `"${r.store}"`,
-                    `"${r.sku}"`,
-                    `"${r.description.replace(/"/g, '""')}"`,
-                    `"${r.productNumber || ''}"`,
-                    r.orderQty,
-                    `"${r.regSellPrice}"`,
-                    '""'
-                ];
-                csvContent += row.join(",") + "\r\n";
+        function exportCSV() {
+            if (!state.cleanedRows || state.cleanedRows.length === 0) {
+                showToast("No store data available to export.", "error");
+                return;
+            }
+
+            // Mirror exportPDF()/printCleanSheets(): honour the store selector.
+            const select = document.getElementById('pdf-store-select');
+            const selected = select ? select.value : 'ALL';
+
+            let storeNames;
+            if (selected === 'ALL') {
+                storeNames = ["DAVIE", "MAIN", "WEST"].filter(s => state.cleanedRows.some(r => (r.store || '').toUpperCase() === s));
+            } else {
+                storeNames = [selected];
+            }
+
+            if (storeNames.length === 0) {
+                showToast("No store data available to export.", "error");
+                return;
+            }
+
+            // Same rows/columns as PDF + print: filtered stores, same column order.
+            const header = ["Store", "Sku", "Description", "Product Number", "Order Qty", "Reg. Sell Price", "QTY Count"];
+            const lines = [header.map(csvEscapeField).join(",")];
+
+            storeNames.forEach(storeName => {
+                const storeRows = state.cleanedRows.filter(r => (r.store || '').toUpperCase() === storeName);
+                storeRows.forEach(r => {
+                    lines.push([
+                        csvEscapeField(r.store),
+                        csvEscapeField(r.sku),
+                        csvEscapeField(r.description),
+                        csvEscapeField(r.productNumber || ''),
+                        csvEscapeField(r.orderQty),
+                        csvEscapeField(r.regSellPrice),
+                        csvEscapeField('')
+                    ].join(","));
+                });
             });
 
-            const encodedUri = encodeURI(csvContent);
+            // Blob + BOM (instead of a data: URI) so large sheets are not cut off
+            // by URL length limits, special characters survive, and Excel opens UTF-8 correctly.
+            const csvText = "﻿" + lines.join("\r\n") + "\r\n";
+            const blob = new Blob([csvText], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
             const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", `PO_${state.poNumber}_${state.vendor}_Receiving_Sheet.csv`);
+            link.setAttribute("href", url);
+            link.setAttribute("download", selected === 'ALL'
+                ? `PO_${state.poNumber}_${state.vendor}_Receiving_Sheets.csv`
+                : `PO_${state.poNumber}_${state.vendor}_${selected}_Receiving_Sheet.csv`);
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-            showToast("CSV file exported successfully!", "success");
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            showToast(selected === 'ALL' ? "CSV file exported successfully (All Stores)!" : `CSV file exported successfully (${selected})!`, "success");
         }
 
         // Builds a clean, print-ready HTML document for one or more stores.
