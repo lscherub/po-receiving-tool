@@ -28,7 +28,7 @@ export default async function handler(req, res) {
     // from being abused as an open relay.
     const ALLOWED = new Set([
       'davie@genesisnutrition.ca',
-      'main@genesisnutrition.ca',
+      'east@genesisnutrition.ca',
       'west@genesisnutrition.ca',
     ]);
     const cleanTo = [...new Set(toList.map((s) => String(s || '').trim().toLowerCase()))]
@@ -37,7 +37,7 @@ export default async function handler(req, res) {
     if (cleanTo.length === 0) {
       return res.status(400).json({
         ok: false,
-        error: 'No valid internal recipient. Use davie@genesisnutrition.ca, main@genesisnutrition.ca, or west@genesisnutrition.ca.',
+        error: 'No valid internal recipient. Use davie@genesisnutrition.ca, east@genesisnutrition.ca, or west@genesisnutrition.ca.',
       });
     }
     if (!subject || !String(subject).trim()) {
