@@ -285,6 +285,47 @@
                         <i class="fa-solid fa-file-pdf"></i>
                         <span>Export as PDF</span>
                     </button>
+                    <button onclick="openEmailModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2 shadow-sm">
+                        <i class="fa-solid fa-envelope"></i>
+                        <span>Send Internal Email</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Internal Email Modal (SMTP2GO via /api/send-email) -->
+            <div id="email-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(15,23,42,.55);">
+                <div class="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden">
+                    <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <i class="fa-solid fa-envelope text-indigo-300"></i>
+                            <span class="font-semibold text-sm">Send Internal Email (PDF attached)</span>
+                        </div>
+                        <button onclick="closeEmailModal()" class="text-slate-300 hover:text-white text-lg leading-none" title="Close">&times;</button>
+                    </div>
+                    <div class="p-5 space-y-4 text-sm">
+                        <p id="email-modal-summary" class="text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2"></p>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Recipients (internal only)</label>
+                            <div id="email-recipients" class="space-y-1.5"></div>
+                            <p class="text-[11px] text-slate-400 mt-1">Only genesisnutrition.ca store mailboxes are allowed by the server.</p>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="email-subject">Subject</label>
+                            <input id="email-subject" type="text" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1" for="email-body">Message</label>
+                            <textarea id="email-body" rows="6" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+                        </div>
+                        <div id="email-status" class="hidden text-xs px-3 py-2 rounded-lg border"></div>
+                    </div>
+                    <div class="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex justify-end items-center gap-2">
+                        <button onclick="closeEmailModal()" class="border border-slate-300 hover:bg-white text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition">Cancel</button>
+                        <button id="email-send-btn" onclick="sendInternalEmail()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2">
+                            <i class="fa-solid fa-paper-plane"></i>
+                            <span>Send with PDF</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -1341,6 +1382,200 @@ WEST\t99031254590\t\t\t\t\tMORPH PROTEIN PUCK STRW MATCHA LATTE SNGL ::38G\tMORP
                     if (pdfIframe && pdfIframe.parentNode) pdfIframe.parentNode.removeChild(pdfIframe);
                     showToast("Failed to generate PDF. Please try again.", "error");
                 });
+        }
+
+        // ---------- Internal Email (SMTP2GO via /api/send-email) ----------
+        // Reuses the same store-selection + PDF path as exportPDF(). Instead of
+        // .save() (download), we output base64 and POST to our serverless
+        // endpoint, which attaches it and calls SMTP2GO server-side.
+        var STORE_EMAILS = {
+            DAVIE: 'davie@genesisnutrition.ca',
+            MAIN: 'main@genesisnutrition.ca',
+            WEST: 'west@genesisnutrition.ca'
+        };
+
+        function getSelectedStoresForExport() {
+            if (!state.cleanedRows || state.cleanedRows.length === 0) return { selected: 'ALL', storeNames: [] };
+            var select = document.getElementById('pdf-store-select');
+            var selected = select ? select.value : 'ALL';
+            var storeNames;
+            if (selected === 'ALL') {
+                storeNames = ["DAVIE", "MAIN", "WEST"].filter(function (s) {
+                    return state.cleanedRows.some(function (r) { return (r.store || '').toUpperCase() === s; });
+                });
+            } else {
+                storeNames = [selected];
+            }
+            return { selected: selected, storeNames: storeNames };
+        }
+
+        function getPdfFilename(selected) {
+            return selected === 'ALL'
+                ? 'PO_' + state.poNumber + '_' + state.vendor + '_Receiving_Sheets.pdf'
+                : 'PO_' + state.poNumber + '_' + state.vendor + '_' + selected + '_Receiving_Sheet.pdf';
+        }
+
+        function buildEmailSubject(selected, storeNames) {
+            var scope = selected === 'ALL' ? 'All Stores (' + storeNames.join(', ') + ')' : selected;
+            return 'PO #' + state.poNumber + ' (' + state.vendor + ') - Receiving Sheet - ' + scope + ' - ' + state.date;
+        }
+
+        function buildEmailBody(selected, storeNames) {
+            var lines = [];
+            lines.push('Hi team,');
+            lines.push('');
+            if (selected === 'ALL') {
+                lines.push('Attached is the receiving sheet PDF for PO #' + state.poNumber + ' (' + state.vendor + ', ' + state.date + ') covering: ' + storeNames.join(', ') + '.');
+            } else {
+                lines.push('Attached is the receiving sheet PDF for PO #' + state.poNumber + ' (' + state.vendor + ', ' + state.date + ') for ' + selected + ' store.');
+            }
+            storeNames.forEach(function (sn) {
+                var rows = state.cleanedRows.filter(function (r) { return (r.store || '').toUpperCase() === sn; });
+                var units = rows.reduce(function (sum, r) { return sum + (parseInt(r.orderQty) || 0); }, 0);
+                lines.push('- ' + sn + ': ' + rows.length + ' line(s), ' + units + ' unit(s)');
+            });
+            lines.push('');
+            lines.push('Please check all expiry dates and customer requests on arrival.');
+            lines.push('');
+            lines.push('Thanks,');
+            return lines.join('\n');
+        }
+
+        function openEmailModal() {
+            if (!state.cleanedRows || state.cleanedRows.length === 0) {
+                showToast("Generate store sheets first before sending email.", "error");
+                return;
+            }
+            var sel = getSelectedStoresForExport();
+            if (sel.storeNames.length === 0) {
+                showToast("No store data available to email.", "error");
+                return;
+            }
+            var box = document.getElementById('email-recipients');
+            box.innerHTML = '';
+            ["DAVIE", "MAIN", "WEST"].forEach(function (sn) {
+                var inScope = sel.storeNames.indexOf(sn) !== -1;
+                var label = document.createElement('label');
+                label.className = 'flex items-center space-x-2 text-sm' + (inScope ? '' : ' opacity-60');
+                var cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.value = STORE_EMAILS[sn];
+                cb.checked = inScope;
+                cb.className = 'rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4';
+                var span = document.createElement('span');
+                span.innerHTML = '<span class="font-medium text-slate-700">' + sn + '</span> <span class="text-slate-400 text-xs">' + STORE_EMAILS[sn] + '</span>';
+                label.appendChild(cb);
+                label.appendChild(span);
+                box.appendChild(label);
+            });
+            document.getElementById('email-subject').value = buildEmailSubject(sel.selected, sel.storeNames);
+            document.getElementById('email-body').value = buildEmailBody(sel.selected, sel.storeNames);
+            document.getElementById('email-modal-summary').textContent =
+                'Scope follows the store selector: ' + (sel.selected === 'ALL' ? 'All Stores (' + sel.storeNames.join(', ') + ')' : sel.selected) +
+                ' | File: ' + getPdfFilename(sel.selected);
+            setEmailStatus('', 'info', true);
+            document.getElementById('email-modal').classList.remove('hidden');
+        }
+
+        function closeEmailModal() {
+            document.getElementById('email-modal').classList.add('hidden');
+        }
+
+        function setEmailStatus(msg, type, hide) {
+            var el = document.getElementById('email-status');
+            if (!el) return;
+            if (hide || !msg) { el.classList.add('hidden'); el.textContent = ''; return; }
+            el.classList.remove('hidden');
+            el.textContent = msg;
+            el.className = 'text-xs px-3 py-2 rounded-lg border ' + (type === 'success'
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                : type === 'error'
+                    ? 'bg-rose-50 text-rose-800 border-rose-200'
+                    : 'bg-blue-50 text-blue-800 border-blue-200');
+        }
+
+        function generatePdfBase64(names, fname) {
+            var opt = {
+                margin: 0.5,
+                filename: fname,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0 },
+                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
+                pagebreak: { mode: ['css', 'legacy'] }
+            };
+            var pdfIframe = null;
+            return renderCleanSheetIntoIframe(names).then(function (iframe) {
+                pdfIframe = iframe;
+                var doc = iframe.contentDocument || iframe.contentWindow.document;
+                return html2pdf().set(opt).from(doc.body).toPdf().output('datauristring');
+            }).then(function (dataUri) {
+                if (pdfIframe && pdfIframe.parentNode) pdfIframe.parentNode.removeChild(pdfIframe);
+                var base64 = String(dataUri || '').split(',')[1] || '';
+                if (!base64) throw new Error('empty-pdf');
+                return base64;
+            }).catch(function (e) {
+                if (pdfIframe && pdfIframe.parentNode) pdfIframe.parentNode.removeChild(pdfIframe);
+                throw e;
+            });
+        }
+
+        function sendInternalEmail() {
+            if (typeof html2pdf === 'undefined') {
+                setEmailStatus('PDF library failed to load. Check connection.', 'error');
+                return;
+            }
+            var sel = getSelectedStoresForExport();
+            if (sel.storeNames.length === 0) {
+                setEmailStatus('No store data available to email.', 'error');
+                return;
+            }
+            var recipients = Array.prototype.slice.call(
+                document.querySelectorAll('#email-recipients input[type="checkbox"]:checked')
+            ).map(function (c) { return c.value; }).filter(Boolean);
+            if (recipients.length === 0) {
+                setEmailStatus('Select at least one internal recipient.', 'error');
+                return;
+            }
+            var subject = document.getElementById('email-subject').value.trim();
+            var bodyText = document.getElementById('email-body').value.trim();
+            if (!subject) { setEmailStatus('Subject is required.', 'error'); return; }
+            var filename = getPdfFilename(sel.selected);
+            var btn = document.getElementById('email-send-btn');
+            btn.disabled = true;
+            btn.classList.add('opacity-60', 'cursor-not-allowed');
+            setEmailStatus('Generating PDF and sending email, please wait...', 'info');
+            generatePdfBase64(sel.storeNames, filename).then(function (base64) {
+                return fetch('/api/send-email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        to: recipients,
+                        subject: subject,
+                        textBody: bodyText || subject,
+                        htmlBody: '<p>' + escapeHtml(bodyText || subject).replace(/\n/g, '<br>') + '</p>',
+                        filename: filename,
+                        fileblob: base64,
+                        mimetype: 'application/pdf'
+                    })
+                }).then(function (r) {
+                    return r.json().then(function (j) { return { ok: r.ok, body: j }; });
+                });
+            }).then(function (result) {
+                if (result.ok && result.body && result.body.ok) {
+                    setEmailStatus('Sent to ' + recipients.join(', ') + ' with ' + filename + ' attached.', 'success');
+                    showToast('Internal email sent successfully!', 'success');
+                } else {
+                    var msg = (result.body && result.body.error) || 'Failed to send email.';
+                    setEmailStatus(msg, 'error');
+                    showToast(msg, 'error');
+                }
+            }).catch(function () {
+                setEmailStatus('Failed to generate PDF or send email.', 'error');
+                showToast('Failed to send email. Please try again.', 'error');
+            }).then(function () {
+                btn.disabled = false;
+                btn.classList.remove('opacity-60', 'cursor-not-allowed');
+            });
         }
 
         // Opens a clean, print-ready version of the selected store(s) in a new
