@@ -330,9 +330,9 @@ WEST\t99031254580\t\t\t\t\tMORPH PROTEIN PUCK BERRY BLAST DRK CHOC SNGL ::38G\tM
 WEST\t99031254590\t\t\t\t\tMORPH PROTEIN PUCK STRW MATCHA LATTE SNGL ::38G\tMORPH\t\t$2.50\t$2.50\t0%\t0%\t$2.50\t12\t0\t$30.00\t\t\t\t$3.79\t\t\t12\t34.00\t\tMORPH\t\t\t\t0\t0\t0\t12\t12\t\t0\t0\t38G\t\t\t\tY`;
 
         function loadSampleData() {
-            document.getElementById('po-number').value = "8695";
-            document.getElementById('po-vendor').value = "MORPH";
-            document.getElementById('po-date').value = "2026-06-18";
+            document.getElementById('po-number').value = "8810";
+            document.getElementById('po-vendor').value = "Canprev";
+            document.getElementById('po-date').value = new Date().toLocaleDateString('en-CA');
             document.getElementById('raw-data-input').value = sampleRawData;
             showToast("Sample POS data loaded successfully!", "success");
         }
@@ -344,7 +344,7 @@ WEST\t99031254590\t\t\t\t\tMORPH PROTEIN PUCK STRW MATCHA LATTE SNGL ::38G\tMORP
             setFileUploadStatus("", "info");
             document.getElementById('po-number').value = "";
             document.getElementById('po-vendor').value = "";
-            document.getElementById('po-date').value = "";
+            document.getElementById('po-date').value = new Date().toLocaleDateString('en-CA');
             goToStep(1);
             showToast("Reset successfully.", "info");
         }
