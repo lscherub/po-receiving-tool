@@ -1,5 +1,6 @@
 // Serves /view/<id>: logs access in Blob metadata, then renders a viewer
-// page that loads the PDF from Blob. ?download=1 logs + redirects to Blob.
+// page that loads the PDF from Blob. ?download=1 logs + streams the PDF
+// back as a forced attachment download.
 import { isValidReportId, getReportMeta, logReportAccess, accessEntryFromReq } from '../../lib/report-store.js';
 
 export default async function handler(req, res) {
@@ -11,11 +12,44 @@ export default async function handler(req, res) {
     return res.status(404).setHeader('Content-Type', 'text/html; charset=utf-8').send(notFoundHtml());
   }
   try { await logReportAccess(id, accessEntryFromReq(req)); } catch (e) { console.error('view log failed:', e); }
+
   if (String(req.query.download || '') === '1') {
-    res.setHeader('Cache-Control', 'no-store');
-    return res.redirect(302, meta.pdfUrl);
+    return streamAsDownload(res, meta);
   }
+
   return res.status(200).setHeader('Content-Type', 'text/html; charset=utf-8').setHeader('Cache-Control', 'no-store').send(viewerHtml(meta, id));
+}
+
+// Fetches the PDF from Blob storage and re-serves it with headers that
+// force a "Save As" download instead of letting the browser just open it.
+async function streamAsDownload(res, meta) {
+  try {
+    const upstream = await fetch(meta.pdfUrl);
+    if (!upstream.ok || !upstream.body) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.redirect(302, meta.pdfUrl); // fallback
+    }
+    const filename = (meta.filename || 'report.pdf').replace(/"/g, '');
+    res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/pdf');
+    const len = upstream.headers.get('content-length');
+    if (len) res.setHeader('Content-Length', len);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200);
+
+    // Stream the upstream body to the response
+    const reader = upstream.body.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.write(Buffer.from(value));
+    }
+    return res.end();
+  } catch (e) {
+    console.error('download stream failed:', e);
+    res.setHeader('Cache-Control', 'no-store');
+    return res.redirect(302, meta.pdfUrl); // fallback so the user isn't stuck
+  }
 }
 
 function esc(s) {
@@ -36,7 +70,7 @@ function viewerHtml(m, id) {
     + '.wrap{max-width:900px;margin:16px auto;padding:0 16px 32px}'
     + '.card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px;margin-bottom:16px;font-size:14px}'
     + '.meta{display:flex;flex-wrap:wrap;gap:8px 24px}.meta div span{color:#64748b;font-size:12px;display:block;text-transform:uppercase}'
-    + '.btn{display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;font-size:14px}'
+    + '.btn{display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;font-size:14px;border:none;cursor:pointer;font-family:inherit}'
     + 'iframe{width:100%;height:80vh;border:1px solid #e2e8f0;border-radius:12px;background:#fff}'
     + '.note{font-size:12px;color:#64748b}</style></head><body>'
     + '<div class="bar"><h1>' + esc(title) + '</h1><p>Genesis Nutrition &bull; Secure report link</p></div>'
@@ -46,9 +80,11 @@ function viewerHtml(m, id) {
     + '<div><span>File</span><strong>' + esc(m.filename) + '</strong></div>'
     + '<div><span>Sent to</span><strong>' + esc((m.recipients || []).join(', ')) + '</strong></div>'
     + '</div><p style="margin:12px 0 0;"><a class="btn" href="' + esc(dl) + '">Download PDF</a>'
-    + ' &nbsp;<a class="btn" style="background:#0f172a" href="' + esc(pdfUrl) + '">Open PDF directly</a>'
+    + ' &nbsp;<button type="button" class="btn" style="background:#0f172a" onclick="printPdf()">Print</button>'
     + ' &nbsp;<span class="note">Use the Download button to save the PDF.</span></p></div>'
-    + '<iframe title="Report PDF" src="' + esc(pdfUrl) + '"></iframe></div></body></html>';
+    + '<iframe id="pdfFrame" title="Report PDF" src="' + esc(pdfUrl) + '"></iframe></div>'
+    + '<script>function printPdf(){var f=document.getElementById("pdfFrame");try{f.contentWindow.focus();f.contentWindow.print();}catch(e){window.open("' + esc(pdfUrl) + '","_blank");}}</script>'
+    + '</body></html>';
 }
 
 function notFoundHtml() {
