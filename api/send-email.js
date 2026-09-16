@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     const { to, subject, textBody, htmlBody, filename, fileblob, mimetype } = body;
     const { reportId, poNumber, vendor, date, selected, storeNames } = body;
     const toList = Array.isArray(to) ? to : (to ? [to] : []);
-    const ALLOWED = new Set(['davie@genesisnutrition.ca', 'main@genesisnutrition.ca', 'west@genesisnutrition.ca']);
+    const ALLOWED = new Set(['loveleen@genesisnutrition.ca', 'main@genesisnutrition.ca', 'west@genesisnutrition.ca']);
     const cleanTo = [...new Set(toList.map((s) => String(s || '').trim().toLowerCase()))].filter((e) => ALLOWED.has(e));
     if (cleanTo.length === 0) return res.status(400).json({ ok: false, error: 'No valid internal recipient.' });
     if (!subject || !String(subject).trim()) return res.status(400).json({ ok: false, error: 'Subject required.' });
