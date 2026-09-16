@@ -1,25 +1,27 @@
 # PO & Receiving Suite — Vercel deploy (static HTML + SMTP2GO email API + tracked report links)
 
-This folder is a deployment copy of the single-page app (`index.html`, unchanged
-framework — still plain HTML/JS + Tailwind CDN + html2pdf.js) plus secure
-serverless endpoints:
+This folder is a deployment copy of the single-page app (`index.html` —
+plain HTML/JS + Tailwind CDN + html2pdf.js) plus secure serverless endpoints:
 
 - `index.html` — existing app + a **Send Internal Email** button/modal on the
   export page (Step 3). Reuses `pdf-store-select`, `buildCleanPdfHtml()`,
   `renderCleanSheetIntoIframe()`, and the same html2pdf options as Export PDF.
   Now also mints a per-send `reportId` and posts the same PDF bytes +
-  store scope for tracking.
+  store scope for tracking. Header also has a head-office **Reports** link
+  to `/report/` (no change to email/PDF/print/upload flows).
 - `api/send-email.js` — holds `SMTP2GO_API_KEY` server-side only, allowlists
   the 3 internal recipients, stores the PDF under the report ID, appends a
-  **View Report** button (`/report/<id>`) to the email, and still attaches
+  **View Report** button (`/view/<id>`) to the email, and still attaches
   the PDF (`filename` / `fileblob` base64 / `mimetype: application/pdf`).
-- `api/report/[id].js` (+ `vercel.json` rewrite `/report/:id` → this) —
+- `api/view/[id].js` (+ `vercel.json` rewrite `/view/:id` → this) —
   logs `{at, ip, ua}` on each view, then shows the correct PDF (scope-aware,
-  incl. All Stores) with a Download button. `?format=pdf` serves raw bytes.
+  incl. All Stores) with a Download button. No Reports link on this page.
 - `api/report-status.js` — `GET /api/report-status?id=<id>` returns
   `accessCount / firstAccessedAt / lastAccessedAt / accesses[]`.
-- `lib/report-store.js` — storage layer. Durable **Vercel Blob** when
-  `BLOB_READ_WRITE_TOKEN` is present, else ephemeral in-memory (dev only).
+- `api/reports.js` — `GET /api/reports` (header `x-report-password`) returns
+  the newest-first head-office history from Blob metadata summaries.
+- `lib/report-store.js` — storage layer: durable **Vercel Blob** only
+  (`po-reports/<id>.pdf` + `po-reports/<id>.json`, no in-memory fallback).
 
 ## 1. SMTP2GO setup (5 min)
 
@@ -59,8 +61,21 @@ Option B — GitHub:
 | `SMTP2GO_API_KEY` | `api-xxxxxxxxxxxxxxxx`       | Production (+ Preview) |
 | `SMTP2GO_SENDER`  | `orders@genesisnutrition.ca` | Production (+ Preview) |
 | `BLOB_READ_WRITE_TOKEN` | *(auto-added when Blob store connected)* | Production (+ Preview) |
+| `REPORT_PASSWORD` | *(any shared head-office password, e.g. `genesis-reports-2026`)* | Production (+ Preview) |
 
 Redeploy after adding them.
+
+### Report history page (`/report/`)
+
+- Main-app header has a **Reports** link → `/report/` (head-office only).
+- `/report/` is a static page asking for the shared `REPORT_PASSWORD`,
+  then calls `GET /api/reports` with header `x-report-password`.
+- The API compares against `process.env.REPORT_PASSWORD` server-side only
+  (timing-safe); the password is never baked into frontend code.
+- Table columns: sent time, store/scope, sent-to, PO/details, viewed
+  (`Waiting...` until first `/view/<id>` open, then first-open time),
+  and the report/PDF link. Kept newest-first.
+- Recipient-facing `/view/<id>` pages have NO Reports button/link.
 
 ## 4. Test
 
@@ -75,13 +90,14 @@ Redeploy after adding them.
 5. Click the link (`https://<your-app>.vercel.app/view/<id>`) → viewer page
    shows the right store scope (try DAVIE vs All Stores) with the PDF loaded
    from Blob + Download. Each open appends `{at, ip, ua}` to Blob metadata.
-6. Check access: modal **Check views**, or
+6. Check access: open `/report/` (password = `REPORT_PASSWORD`) for the
+   history table, or modal **Check views**, or
    `GET https://<your-app>.vercel.app/api/report-status?id=<reportId>` → JSON
    with `reportType/selected/storeNames/recipients/sent date/viewed/
    accessCount/firstAccessedAt/lastAccessedAt/accesses[]`.
-   Per your instruction no dashboard page was added — status is API + modal.
 7. Cleanup: `vercel.json` schedules `GET /api/cron-cleanup` daily 03:00 UTC,
-   which deletes `po-reports/*` blobs older than 14 days. Set `CRON_SECRET`
+   which deletes `po-reports/<id>.pdf` + `po-reports/<id>.json` pairs whose
+   metadata `createdAt` is older than 14 days (fallback: Blob `uploadedAt`). Set `CRON_SECRET`
    (any random string) so manual hits require
    `Authorization: Bearer <secret>`; Vercel Cron sends it automatically.
    Note: Hobby plan runs crons once daily max — the schedule above complies.
