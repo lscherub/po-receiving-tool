@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Report History - PO Receiving Suite</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link
+  rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css"
+>
 <style>
 body{font-family:Arial,Helvetica,sans-serif;margin:0;background:#f1f5f9;color:#0f172a}
 .bar{background:#0f172a;color:#fff;padding:14px 20px}
@@ -40,12 +44,12 @@ input{width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;fo
                 </div>
             </div>
             <div class="mt-3 sm:mt-0 flex items-center space-x-3">
-                <a href="/" class="text-warning bg-neutral-primary border border-warning hover:bg-warning hover:text-white focus:ring-4 focus:ring-neutral-tertiary font-medium leading-5 rounded-base text-sm px-4 py-2.5 focus:outline-none">
+                <a type="button" href="/" class="button is-danger is-outlined">
                     <i class="fa-solid fa-chart-line"></i>
                     <span>Home</span>
                 </a>
-              <button onclick="history.go(-1)"
-                            class="text-success bg-neutral-primary border border-success hover:bg-success hover:text-white focus:ring-4 focus:ring-neutral-tertiary font-medium leading-5 rounded-base text-sm px-4 py-2.5 focus:outline-none">
+              <button type="button" onclick="history.go(-1)"
+                            class="button is-success is-outlined">
                             <i class="fa-solid fa-arrow-left mr-1.5"></i> Back to Export
                 </button>
             </div>
