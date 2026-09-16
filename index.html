@@ -1587,9 +1587,8 @@ WEST\t99031254590\t\t\t\t\tMORPH PROTEIN PUCK STRW MATCHA LATTE SNGL ::38G\tMORP
             var bodyText = document.getElementById('email-body').value.trim();
             if (!subject) { setEmailStatus('Subject is required.', 'error'); return; }
             var filename = getPdfFilename(sel.selected);
-            // Unique ID for this exact send: server stores the PDF under it and
-            // /report/<id> serves + tracks it. Generated client-side so the
-            // email body the user previewed already names the right report.
+            // Unique ID for this exact send: server uploads the PDF to Blob
+            // under it and /view/<id> serves + tracks it.
             var reportId = makeReportId();
             var btn = document.getElementById('email-send-btn');
             btn.disabled = true;
@@ -1620,7 +1619,7 @@ WEST\t99031254590\t\t\t\t\tMORPH PROTEIN PUCK STRW MATCHA LATTE SNGL ::38G\tMORP
                 });
             }).then(function (result) {
                 if (result.ok && result.body && result.body.ok) {
-                    var viewUrl = (result.body && result.body.viewUrl) || ('/report/' + reportId);
+                    var viewUrl = (result.body && result.body.viewUrl) || ('/view/' + reportId);
                     setEmailStatus('Sent to ' + recipients.join(', ') + ' with ' + filename + ' attached + View Report link.', 'success');
                     showToast('Internal email sent successfully!', 'success');
                     setTrackingBox({ reportId: (result.body && result.body.reportId) || reportId, viewUrl: viewUrl, filename: filename });

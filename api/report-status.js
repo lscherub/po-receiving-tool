@@ -1,37 +1,22 @@
-import { loadReport, isValidReportId, storageMode } from '../lib/report-store.js';
+// GET /api/report-status?id=<id> — was/when accessed + send metadata.
+import { isValidReportId, getReportMeta } from '../lib/report-store.js';
 
-// GET /api/report-status?id=<reportId>
-// Lets the sender see whether / when a report link was accessed.
 export default async function handler(req, res) {
-  if (req.method !== 'GET') {
-    return res.status(405).json({ ok: false, error: 'Method not allowed. Use GET.' });
-  }
+  if (req.method !== 'GET') return res.status(405).json({ ok: false, error: 'Use GET.' });
   const id = req.query && req.query.id;
-  if (!isValidReportId(id)) {
-    return res.status(400).json({ ok: false, error: 'Invalid or missing report id.' });
-  }
-  const rec = await loadReport(id);
-  if (!rec) {
-    return res.status(404).json({ ok: false, error: 'Report not found or expired.' });
-  }
-  const accesses = Array.isArray(rec.accesses) ? rec.accesses : [];
+  if (!isValidReportId(id)) return res.status(400).json({ ok: false, error: 'Invalid id.' });
+  const m = await getReportMeta(id);
+  if (!m) return res.status(404).json({ ok: false, error: 'Report not found or expired.' });
+  const accesses = Array.isArray(m.accesses) ? m.accesses : [];
   return res.status(200).json({
-    ok: true,
-    id: rec.id,
-    createdAt: rec.createdAt,
-    poNumber: rec.poNumber,
-    vendor: rec.vendor,
-    date: rec.date,
-    selected: rec.selected,
-    storeNames: rec.storeNames,
-    recipients: rec.recipients,
-    subject: rec.subject,
-    filename: rec.filename,
-    viewUrl: `/report/${rec.id}`,
-    storage: storageMode(),
-    accessCount: accesses.length,
+    ok: true, id: m.id, createdAt: m.createdAt, expiresAt: m.expiresAt,
+    reportType: m.reportType || 'Store Receiving Sheet',
+    poNumber: m.poNumber, vendor: m.vendor, date: m.date,
+    selected: m.selected, storeNames: m.storeNames, recipients: m.recipients,
+    subject: m.subject, filename: m.filename, viewUrl: '/view/' + m.id,
+    storage: 'blob', accessCount: accesses.length,
+    viewed: accesses.length > 0,
     firstAccessedAt: accesses.length ? accesses[0].at : null,
-    lastAccessedAt: rec.lastAccessedAt || null,
-    accesses,
+    lastAccessedAt: m.lastAccessedAt || null, accesses,
   });
 }

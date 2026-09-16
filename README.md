@@ -45,10 +45,12 @@ Option B — GitHub:
 2. Vercel Dashboard → **Add New → Project → Import** the repo. Framework
    preset: **Other**. No build command needed. (`npm install` picks up
    `@vercel/blob` for report storage.)
-3. **Recommended for tracking:** Vercel Dashboard → **Storage → Create →
+3. **REQUIRED for tracked links:** Vercel Dashboard → **Storage → Create →
    Blob**, then **Connect** it to this project (auto-adds
-   `BLOB_READ_WRITE_TOKEN`). Without it, `/report/<id>` still works but
-   access logs are lost on cold starts/restarts.
+   `BLOB_READ_WRITE_TOKEN`), then **redeploy**. Email sending is blocked
+   without it, so you can never get an attachment without a working link.
+   Old `/report/<id>` links from the previous build are obsolete — send a new
+   email to get a `/view/<id>` link.
 
 ## 3. Environment variables (Vercel Dashboard → Project → Settings → Environment Variables)
 
@@ -69,13 +71,20 @@ Redeploy after adding them.
    `PO #8810 (MORPH) - Receiving Sheet - DAVIE - 2026-09-15`.
 4. **Send with PDF + Tracked Link** → success toast + modal status + tracked-link
    box with a **Check views** button. Check inbox: email has the PDF attachment
-   AND a **View Report** button.
-5. Click **View Report** → viewer page shows the right store scope (try DAVIE vs
-   All Stores) with inline PDF + Download. Each open appends
-   `{at, ip, ua}` server-side.
+   AND a **View / Download PDF Report** button + plain URL.
+5. Click the link (`https://<your-app>.vercel.app/view/<id>`) → viewer page
+   shows the right store scope (try DAVIE vs All Stores) with the PDF loaded
+   from Blob + Download. Each open appends `{at, ip, ua}` to Blob metadata.
 6. Check access: modal **Check views**, or
    `GET https://<your-app>.vercel.app/api/report-status?id=<reportId>` → JSON
-   with `accessCount / firstAccessedAt / lastAccessedAt / accesses[]`.
+   with `reportType/selected/storeNames/recipients/sent date/viewed/
+   accessCount/firstAccessedAt/lastAccessedAt/accesses[]`.
+   Per your instruction no dashboard page was added — status is API + modal.
+7. Cleanup: `vercel.json` schedules `GET /api/cron-cleanup` daily 03:00 UTC,
+   which deletes `po-reports/*` blobs older than 14 days. Set `CRON_SECRET`
+   (any random string) so manual hits require
+   `Authorization: Bearer <secret>`; Vercel Cron sends it automatically.
+   Note: Hobby plan runs crons once daily max — the schedule above complies.
 
 ## 5. Local test (optional)
 

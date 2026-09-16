@@ -2,7 +2,10 @@
   "version": 2,
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/report/:id", "destination": "/api/report/:id" }
+    { "source": "/view/:id", "destination": "/api/view/:id" }
+  ],
+  "crons": [
+    { "path": "/api/cron-cleanup", "schedule": "0 3 * * *" }
   ]
 }
 
