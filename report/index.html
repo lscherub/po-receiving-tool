@@ -27,11 +27,16 @@ input{width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;fo
 </style>
 </head>
 <body>
-<div class="bar"><h1>Report history - internal (head office)</h1><p>Sent emails and whether the store opened the PDF link. Kept about 14 days.</p></div>
+<div class="bar"><h1>Report history - internal (head office)</h1><p>Sent emails and whether the store opened the PDF link. Kept about 14 days.</p>
+<a href="/" class="bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/50 text-xs px-3 py-1.5 rounded-md font-medium transition flex items-center space-x-1.5" title="Head-office report history">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>Home</span>
+                </a>
+</div>
 <div class="wrap">
 <div class="card" id="gate">
 <h2 style="margin:0 0 6px;font-size:15px;">Enter report password</h2>
-<p class="muted" style="margin:0 0 12px;">Shared head-office password (server env REPORT_PASSWORD).</p>
+<p class="muted" style="margin:0 0 12px;">Shared head-office password</p>
 <form id="gate-form">
 <input id="pw" type="password" autocomplete="current-password" placeholder="Password" aria-label="Report password">
 <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
