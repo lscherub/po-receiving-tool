@@ -39,7 +39,7 @@ function viewerHtml(m, id) {
     + '.btn{display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;font-size:14px}'
     + 'iframe{width:100%;height:80vh;border:1px solid #e2e8f0;border-radius:12px;background:#fff}'
     + '.note{font-size:12px;color:#64748b}</style></head><body>'
-    + '<div class="bar"><h1>' + esc(title) + '</h1><p>Genesis Nutrition &bull; Secure report link &bull; Opening this page is logged</p></div>'
+    + '<div class="bar"><h1>' + esc(title) + '</h1><p>Genesis Nutrition &bull; Secure report link</p></div>'
     + '<div class="wrap"><div class="card"><div class="meta">'
     + '<div><span>Scope</span><strong>' + esc(scope) + '</strong></div>'
     + '<div><span>Date</span><strong>' + esc(m.date) + '</strong></div>'
