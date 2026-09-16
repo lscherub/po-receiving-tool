@@ -47,7 +47,7 @@ function viewerHtml(m, id) {
     + '<div><span>Sent to</span><strong>' + esc((m.recipients || []).join(', ')) + '</strong></div>'
     + '</div><p style="margin:12px 0 0;"><a class="btn" href="' + esc(dl) + '">Download PDF</a>'
     + ' &nbsp;<a class="btn" style="background:#0f172a" href="' + esc(pdfUrl) + '">Open PDF directly</a>'
-    + ' &nbsp;<span class="note">Same PDF as email attachment.</span></p></div>'
+    + ' &nbsp;<span class="note">Use the Download button to save the PDF.</span></p></div>'
     + '<iframe title="Report PDF" src="' + esc(pdfUrl) + '"></iframe></div></body></html>';
 }
 

@@ -10,9 +10,11 @@ plain HTML/JS + Tailwind CDN + html2pdf.js) plus secure serverless endpoints:
   store scope for tracking. Header also has a head-office **Reports** link
   to `/report/` (no change to email/PDF/print/upload flows).
 - `api/send-email.js` — holds `SMTP2GO_API_KEY` server-side only, allowlists
-  the 3 internal recipients, stores the PDF under the report ID, appends a
-  **View Report** button (`/view/<id>`) to the email, and still attaches
-  the PDF (`filename` / `fileblob` base64 / `mimetype: application/pdf`).
+  the 3 internal recipients, stores the PDF bytes in Blob under the report ID
+  (for the tracked link), and appends a **View / Download PDF Report**
+  button (`/view/<id>`) to the email. No PDF attachment is sent —
+  link-only delivery (`filename` / `fileblob` base64 are used only to
+  build the Blob-hosted PDF).
 - `api/view/[id].js` (+ `vercel.json` rewrite `/view/:id` → this) —
   logs `{at, ip, ua}` on each view, then shows the correct PDF (scope-aware,
   incl. All Stores) with a Download button. No Reports link on this page.
@@ -50,7 +52,7 @@ Option B — GitHub:
 3. **REQUIRED for tracked links:** Vercel Dashboard → **Storage → Create →
    Blob**, then **Connect** it to this project (auto-adds
    `BLOB_READ_WRITE_TOKEN`), then **redeploy**. Email sending is blocked
-   without it, so you can never get an attachment without a working link.
+   without it, so you can never get a working tracked link.
    Old `/report/<id>` links from the previous build are obsolete — send a new
    email to get a `/view/<id>` link.
 
@@ -84,9 +86,9 @@ Redeploy after adding them.
    **Send Internal Email**.
 3. Recipients auto-check to match the selector; subject/body auto-fill like
    `PO #8810 (MORPH) - Receiving Sheet - DAVIE - 2026-09-15`.
-4. **Send with PDF + Tracked Link** → success toast + modal status + tracked-link
-   box with a **Check views** button. Check inbox: email has the PDF attachment
-   AND a **View / Download PDF Report** button + plain URL.
+4. **Send with Tracked Link** → success toast + modal status + tracked-link
+   box with a **Check views** button. Check inbox: email has ONLY a
+   **View / Download PDF Report** button + plain URL (no attachment).
 5. Click the link (`https://<your-app>.vercel.app/view/<id>`) → viewer page
    shows the right store scope (try DAVIE vs All Stores) with the PDF loaded
    from Blob + Download. Each open appends `{at, ip, ua}` to Blob metadata.
@@ -117,7 +119,8 @@ SMTP2GO_API_KEY=api-xxx SMTP2GO_SENDER=orders@genesisnutrition.ca npx vercel dev
 - The endpoint only sends to
   `davie@genesisnutrition.ca`, `main@genesisnutrition.ca`,
   `west@genesisnutrition.ca` — anything else returns 400. This stops open-relay abuse.
-- Attachments capped at ~15 MB base64 (SMTP2GO max is 50 MB total).
+- PDF bytes uploaded for the tracked link are capped at ~15 MB base64
+  (Blob/SMTP2GO limits).
 
 ## GitHub Pages note
 

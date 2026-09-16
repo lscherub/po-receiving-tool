@@ -302,7 +302,7 @@
                     <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
                         <div class="flex items-center space-x-2">
                             <i class="fa-solid fa-envelope text-indigo-300"></i>
-                            <span class="font-semibold text-sm">Send Internal Email (PDF attached)</span>
+                            <span class="font-semibold text-sm">Send Internal Email (PDF link)</span>
                         </div>
                         <button onclick="closeEmailModal()" class="text-slate-300 hover:text-white text-lg leading-none" title="Close">&times;</button>
                     </div>
@@ -328,7 +328,7 @@
                         <button onclick="closeEmailModal()" class="border border-slate-300 hover:bg-white text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition">Cancel</button>
                         <button id="email-send-btn" onclick="sendInternalEmail()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2">
                             <i class="fa-solid fa-paper-plane"></i>
-                            <span>Send with PDF + Tracked Link</span>
+                            <span>Send with Tracked Link</span>
                         </button>
                     </div>
                 </div>
@@ -1430,9 +1430,9 @@ WEST\t99031254590\t\t\t\t\tMORPH PROTEIN PUCK STRW MATCHA LATTE SNGL ::38G\tMORP
             lines.push('Hi team,');
             lines.push('');
             if (selected === 'ALL') {
-                lines.push('Attached is the receiving sheet PDF for PO #' + state.poNumber + ' (' + state.vendor + ', ' + state.date + ') covering: ' + storeNames.join(', ') + '.');
+                lines.push('Please review the purchase order PO #' + state.poNumber + ' (' + state.vendor + ', ' + state.date + ') covering: ' + storeNames.join(', ') + ' using the link below.');
             } else {
-                lines.push('Attached is the receiving sheet PDF for PO #' + state.poNumber + ' (' + state.vendor + ', ' + state.date + ') for ' + selected + ' store.');
+                lines.push('Please review the purchase order PO #' + state.poNumber + ' (' + state.vendor + ', ' + state.date + ') for ' + selected + ' store using the link below.');
             }
             storeNames.forEach(function (sn) {
                 var rows = state.cleanedRows.filter(function (r) { return (r.store || '').toUpperCase() === sn; });
@@ -1624,7 +1624,7 @@ WEST\t99031254590\t\t\t\t\tMORPH PROTEIN PUCK STRW MATCHA LATTE SNGL ::38G\tMORP
             }).then(function (result) {
                 if (result.ok && result.body && result.body.ok) {
                     var viewUrl = (result.body && result.body.viewUrl) || ('/view/' + reportId);
-                    setEmailStatus('Sent to ' + recipients.join(', ') + ' with ' + filename + ' attached + View Report link.', 'success');
+                    setEmailStatus('Sent to ' + recipients.join(', ') + ' with View Report link.', 'success');
                     showToast('Internal email sent successfully!', 'success');
                     setTrackingBox({ reportId: (result.body && result.body.reportId) || reportId, viewUrl: viewUrl, filename: filename });
                 } else {

@@ -15,7 +15,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ ok: false, error: 'Server missing BLOB_READ_WRITE_TOKEN. Connect Blob store and redeploy. Email NOT sent.' });
     }
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-    const { to, subject, textBody, htmlBody, filename, fileblob, mimetype } = body;
+    const { to, subject, textBody, htmlBody, filename, fileblob } = body;
     const { reportId, poNumber, vendor, date, selected, storeNames } = body;
     const toList = Array.isArray(to) ? to : (to ? [to] : []);
     const ALLOWED = new Set(['loveleen@genesisnutrition.ca', 'main@genesisnutrition.ca', 'west@genesisnutrition.ca']);
@@ -23,7 +23,7 @@ export default async function handler(req, res) {
     if (cleanTo.length === 0) return res.status(400).json({ ok: false, error: 'No valid internal recipient.' });
     if (!subject || !String(subject).trim()) return res.status(400).json({ ok: false, error: 'Subject required.' });
     if (!fileblob || typeof fileblob !== 'string' || fileblob.length < 1000) {
-      return res.status(400).json({ ok: false, error: 'PDF attachment missing or too small.' });
+      return res.status(400).json({ ok: false, error: 'PDF data missing or too small.' });
     }
     if (fileblob.length > 20 * 1024 * 1024) return res.status(413).json({ ok: false, error: 'PDF too large (max ~15MB).' });
     const safeFilename = String(filename || 'Receiving_Sheet.pdf').replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 120) || 'Receiving_Sheet.pdf';
@@ -64,7 +64,6 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         sender, to: cleanTo, subject: String(subject).slice(0, 200),
         text_body: textWithLink, html_body: htmlWithLink,
-        attachments: [{ filename: safeFilename, fileblob, mimetype: mimetype || 'application/pdf' }],
       }),
     });
     const data = await smtpRes.json().catch(() => ({}));
@@ -93,6 +92,6 @@ function withViewLinkHtml(htmlBody, textBody, subject, viewUrl) {
   const safeUrl = String(viewUrl).replace(/"/g, '%22');
   return base
     + '<div style="margin:20px 0 8px;"><a href="' + safeUrl + '" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:700;font-size:15px;">View / Download PDF Report</a></div>'
-    + '<p style="font-size:12px;color:#64748b;margin:0;">Opening this link is logged. Same PDF also attached.</p>'
+    + '<p style="font-size:12px;color:#64748b;margin:0;">Opening this link is logged. Please use the button above to view/download the PDF.</p>'
     + '<p style="font-size:12px;color:#94a3b8;word-break:break-all;">' + escLite(safeUrl) + '</p>';
 }
