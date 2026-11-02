@@ -22,6 +22,8 @@ a{color:#4f46e5}
 input{width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;box-sizing:border-box}
 .btn{display:inline-block;background:#4f46e5;color:#fff;border:none;padding:10px 18px;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer}
 .btn.ghost{background:#0f172a}
+.btn.sm{padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600}
+.btn:disabled{opacity:0.6;cursor:not-allowed}
 .muted{font-size:12px;color:#64748b}
 .err{background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:8px;padding:10px 12px;font-size:13px;margin-top:10px}
 .rowlink{word-break:break-all}
@@ -118,9 +120,37 @@ var viewed=r.viewed?'<span class="badge ok">✓ '+esc(fmt(r.firstAccessedAt))+'<
 var abs=String(r.viewUrl||('/view/'+r.id));
 var full=abs.charAt(0)==='/'?(location.origin+abs):abs;
 var po=esc([r.poNumber?('PO #'+r.poNumber):'',r.vendor||'',r.date||''].filter(Boolean).join(' | '));
-return '<tr><td>'+sent+'</td><td><strong>'+esc(storeLabel(r))+'</strong></td><td>'+esc((r.recipients||[]).join(', '))+'</td><td>'+po+'<div class="muted">'+esc(r.subject||'')+'</div></td><td>'+viewed+'</td><td><a class="rowlink" href="'+esc(abs)+'" target="_blank" rel="noopener">Open PDF link</a><div class="muted">'+esc(full)+'</div></td></tr>';
+return '<tr><td>'+sent+'</td><td><strong>'+esc(storeLabel(r))+'</strong></td><td>'+esc((r.recipients||[]).join(', '))+'</td><td>'+po+'<div class="muted">'+esc(r.subject||'')+'</div></td><td>'+viewed+'</td><td><a class="rowlink" href="'+esc(abs)+'" target="_blank" rel="noopener">Open PDF link</a><div class="muted">'+esc(full)+'</div><div style="margin-top:6px;display:flex;align-items:center;flex-wrap:wrap;gap:8px;"><button type="button" class="btn sm resend-btn" data-id="'+esc(r.id)+'">Resend Order Sheet</button><span class="resend-feedback" style="font-size:12px;"></span></div></td></tr>';
 }).join('');
 }
+rows.addEventListener('click',function(e){
+var btn=e.target.closest('.resend-btn');
+if(!btn||btn.disabled)return;
+var id=btn.getAttribute('data-id');
+if(!id)return;
+var container=btn.parentElement;
+var feedback=container?container.querySelector('.resend-feedback'):null;
+btn.disabled=true;
+btn.textContent='Sending...';
+if(feedback)feedback.innerHTML='<span class="muted">Sending email...</span>';
+fetch('/api/send-email',{
+method:'POST',
+headers:{'Content-Type':'application/json','x-report-password':pw},
+body:JSON.stringify({action:'resend',reportId:id})
+})
+.then(function(res){return res.json().then(function(j){return{status:res.status,body:j};}).catch(function(){return{status:res.status,body:null};});})
+.then(function(out){
+if(out.status===401){pw='';sessionStorage.removeItem('report_pw');showGate('Session expired or wrong password.');return;}
+if(out.status===200&&out.body&&out.body.ok){
+if(feedback)feedback.innerHTML='<span style="color:#166534;font-weight:600;">✓ '+esc(out.body.message||'Order Sheet successfully resent.')+'</span>';
+}else{
+var msg=(out.body&&out.body.error)||('Failed to resend (HTTP '+out.status+').');
+if(feedback)feedback.innerHTML='<span style="color:#991b1b;font-weight:600;">'+esc(msg)+'</span>';
+}
+})
+.catch(function(){if(feedback)feedback.innerHTML='<span style="color:#991b1b;font-weight:600;">Network error. Please try again.</span>';})
+.finally(function(){btn.disabled=false;btn.textContent='Resend Order Sheet';});
+});
 document.getElementById('gate-form').addEventListener('submit',function(e){e.preventDefault();var v=document.getElementById('pw').value||'';if(!v){showGate('Enter the password.');return;}pw=v;sessionStorage.setItem('report_pw',pw);document.getElementById('pw').value='';showList();fetchReports(pw);});
 document.getElementById('refresh').addEventListener('click',function(){fetchReports(pw);});
 document.getElementById('lock').addEventListener('click',function(){pw='';sessionStorage.removeItem('report_pw');showGate('');});
